@@ -4,7 +4,7 @@ This userscript for Tempermonkey allows you to disable moderation checks during 
 # Installation
 First of all you will have to install [Tampermonkey](https://www.tampermonkey.net) plugin for your browser. Then there are two ways to install the ChatGPT-DeMod userscript:  
 1. Get link to the *ChatGPT DeMod.user.js* file from the release page, then open Tampermonkey's options and navigate to **Utilities** tab. Once there scroll to the bottom of the page and paste the link into the **Import from URL** textfield and press **Install**.
-2. Open the *ChatGPT DeMod.user.js* file in raw view and copy the contents. Then in Tampermonkey's options click the **+** tab to create a new script. Paste the copied contents into it and save it.
+2. Open the *ChatGPT DeMod.user.js* file in raw view and Tampermonkey should offer to install it. If not, copy the contents, and then in Tampermonkey's options click the **+** tab to create a new script. Paste the copied contents into it and save it.
 
 Make sure the script is enabled by navigating the **Installed Userscripts** tab.
 
