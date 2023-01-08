@@ -6,6 +6,8 @@
 // @author       4as
 // @match        *://chat.openai.com/*
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
+// @downloadURL  https://github.com/4as/ChatGPT-DeMod/raw/main/ChatGPT%20DeMod.user.js
+// @updateURL    https://github.com/4as/ChatGPT-DeMod/raw/main/ChatGPT%20DeMod.user.js
 // @grant        GM.setValue
 // @grant        GM.getValue
 // @run-at       document-start
@@ -13,7 +15,7 @@
 
 'use strict';
 
-var url = "https://gist.githubusercontent.com/4as/b626bd495b52d35b3d565a1731e158f0/raw/d0593887c79bc72339315b11080e6b84543b4f9e/gistfile1.txt";
+var url = "https://github.com/4as/ChatGPT-DeMod/raw/main/conversations.json";
 var has_conversations;
 var conversations;
 
@@ -75,12 +77,16 @@ function updateDeModState() {
 var current_message = null;
 var used_opening = Math.random() > 0.5;
 var currently_responding = false;
+var intercept_count_normal = 0;
+var intercept_count_extended = 0;
+var intercept_count_total = 0;
 
 const original_fetch = unsafeWindow.fetch;
 
 unsafeWindow.fetch = async (...arg) => {
-    if( has_conversations && arg[0].indexOf('/moderations') != -1 ) {
+    if( has_conversations && arg[0].indexOf('/moderation') != -1 ) {
         if( is_on ) {
+            intercept_count_total ++;
             var body = JSON.parse(arg[1].body);
             if( body.hasOwnProperty("input") ) {
                 var text = null;
@@ -97,16 +103,27 @@ unsafeWindow.fetch = async (...arg) => {
                     }
                     text = current_message.input;
                 }
-                console.log("Moderation call intercepted for plain input! Responding: "+currently_responding+". Sending text: "+text);
+                if( text == null ) text = "Hi!";
+                intercept_count_normal ++;
                 body.input = text;
             }
-            else for(var j = 0; j<body.messages.length; j++) {
-                var msg = body.messages[j];
-                if( msg.content.content_type == "text" ) {
-                    console.log("Moderation call intercepted for segmented input! Responding: "+currently_responding+". Sending output: "+current_message.output);
-                    msg.content.parts = [current_message.output];
+            else {
+                var intercepted = false;
+                for(var j = 0; j<body.messages.length; j++) {
+                    var msg = body.messages[j];
+                    if( msg.content.content_type == "text" ) {
+                        msg.content.parts = [current_message.output];
+                        intercepted = true;
+                    }
+                }
+                if( intercepted ) {
+                    intercept_count_extended ++;
+                }
+                else {
+                    console.error("Moderation call interception failed, unknown format! Message:\n"+JSON.stringify(body));
                 }
             }
+            console.log("Moderation call intercepted. Normal count: "+intercept_count_normal+", extended count: "+intercept_count_extended+", total: "+intercept_count_total);
             currently_responding = !currently_responding;
             arg[1].body = JSON.stringify(body);
         }
