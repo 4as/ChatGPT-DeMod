@@ -6,8 +6,8 @@
 // @author       4as
 // @match        *://chat.openai.com/*
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
-// @downloadURL  https://github.com/4as/ChatGPT-DeMod/raw/main/ChatGPT%20DeMod.user.js
-// @updateURL    https://github.com/4as/ChatGPT-DeMod/raw/main/ChatGPT%20DeMod.user.js
+// @downloadURL  https://raw.githubusercontent.com/4as/ChatGPT-DeMod/main/ChatGPT%20DeMod.user.js
+// @updateURL    https://raw.githubusercontent.com/4as/ChatGPT-DeMod/main/ChatGPT%20DeMod.user.js
 // @grant        GM.setValue
 // @grant        GM.getValue
 // @run-at       document-start
@@ -15,7 +15,7 @@
 
 'use strict';
 
-var url = "https://github.com/4as/ChatGPT-DeMod/raw/main/conversations.json";
+var url = "https://raw.githubusercontent.com/4as/ChatGPT-DeMod/main/conversations.json";
 var has_conversations;
 var conversations;
 
