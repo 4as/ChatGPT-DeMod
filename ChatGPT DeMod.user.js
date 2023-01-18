@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      0.1
+// @version      1.1
 // @description  Prevents moderation checks during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -132,6 +132,8 @@ unsafeWindow.fetch = async (...arg) => {
     return original_fetch(...arg);
 }
 
+
+
 (async () => {
     'use strict';
     is_on = await GM.getValue(DEMOD_KEY, false);
@@ -139,7 +141,16 @@ unsafeWindow.fetch = async (...arg) => {
         .then(res => res.json())
         .then(out => { (conversations = out); has_conversations = true; console.log("Conversations loaded! Openings: "+conversations.openings.length+", main: "+conversations.conversations.length+", endings: "+conversations.endings.length); } )
         .catch(err => { console.log("Failed to download conversations: "+err); } );
-    conversation_page = Math.floor(Math.random() * conversations.conversations.length);
-    updateDeModState();
-    document.body.appendChild(demod_button);
+    if( conversations != null ) {
+        conversation_page = Math.floor(Math.random() * conversations.conversations.length);
+        updateDeModState();
+        document.body.appendChild(demod_button);
+    }
+
+    XMLHttpRequest.prototype.realOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
+        if( is_on && url.indexOf("/track/?") != -1 ) return;
+        this.realOpen (method, url, async, user, password);
+    }
+
 })();
