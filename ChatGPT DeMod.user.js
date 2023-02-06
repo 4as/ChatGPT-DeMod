@@ -52,16 +52,16 @@ const demod_button = document.createElement('button');
 updateDeModState()
 
 demod_button.style.position = 'fixed';
-demod_button.style.top = '34px';
-demod_button.style.right = '0px';
-demod_button.style.transform = 'translate(-50%, -50%)';
+demod_button.style.bottom = '0px';
+demod_button.style.left = '50%';
+demod_button.style.transform = 'translate(-50%, 0%)';
 demod_button.style.color = 'white';
-demod_button.style.padding = '12px 20px';
+demod_button.style.padding = '14px';
 demod_button.style.border = 'none';
 demod_button.style.cursor = 'pointer';
 demod_button.style.outline = 'none';
 demod_button.style.borderRadius = '4px';
-demod_button.style.zIndex = 998;
+demod_button.style.zIndex = 999;
 
 demod_button.addEventListener('click', () => {
     is_on = !is_on;
@@ -73,10 +73,6 @@ function updateDeModState() {
     demod_button.textContent = "DeMod: "+(is_on?"On":"Off");
 	demod_button.style.backgroundColor = is_on?'#4CAF50':'#AF4C50';
 }
-
-// Raise built-in buttons above our button
-var buttons_style = document.createElement("style");
-buttons_style.appendChild(document.createTextNode("div.text-gray-400 {z-index: 999;}"));
 
 var current_message = null;
 var used_opening = Math.random() > 0.5;
@@ -149,7 +145,6 @@ unsafeWindow.fetch = async (...arg) => {
         conversation_page = Math.floor(Math.random() * conversations.conversations.length);
         updateDeModState();
         document.body.appendChild(demod_button);
-        document.head.appendChild(buttons_style);
     }
 
     XMLHttpRequest.prototype.realOpen = XMLHttpRequest.prototype.open;
