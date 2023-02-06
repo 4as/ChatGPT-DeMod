@@ -49,13 +49,12 @@ var is_on = false;
 
  // Adding DeMod button
 const demod_button = document.createElement('button');
-demod_button.textContent = "DeMod: Off";
+updateDeModState()
 
 demod_button.style.position = 'fixed';
-demod_button.style.top = '34px';
+demod_button.style.bottom = '2px';
 demod_button.style.left = '50%';
-demod_button.style.transform = 'translate(-50%, -50%)';
-demod_button.style.backgroundColor = '#4CAF50';
+demod_button.style.transform = 'translate(-50%, 0%)';
 demod_button.style.color = 'white';
 demod_button.style.padding = '12px 20px';
 demod_button.style.border = 'none';
@@ -72,6 +71,7 @@ demod_button.addEventListener('click', () => {
 
 function updateDeModState() {
     demod_button.textContent = "DeMod: "+(is_on?"On":"Off");
+	demod_button.style.backgroundColor = is_on?'#4CAF50':'#AF4C50';
 }
 
 var current_message = null;
