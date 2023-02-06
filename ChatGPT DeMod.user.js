@@ -52,11 +52,11 @@ const demod_button = document.createElement('button');
 updateDeModState()
 
 demod_button.style.position = 'fixed';
-demod_button.style.bottom = '0px';
+demod_button.style.bottom = '2px';
 demod_button.style.left = '50%';
 demod_button.style.transform = 'translate(-50%, 0%)';
 demod_button.style.color = 'white';
-demod_button.style.padding = '14px';
+demod_button.style.padding = '12px 20px';
 demod_button.style.border = 'none';
 demod_button.style.cursor = 'pointer';
 demod_button.style.outline = 'none';
