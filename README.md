@@ -11,3 +11,6 @@ The button will read either "DeMod: Off" or "DeMod: On." Clicking it switches be
 In other words DeMod makes the conversation seems like it's about something completely else that what you're actually sending and receiving.  
 It's handled this way to ensure that nothing will seem out of place. No one knows what kind of security checks does the ChatGPT's backend has so let's not risk anything by blocking something we shouldn't. Instead the checks still go through but with a different text.  
 To further ensure nothing seems out of place keep in mind you can always turn DeMod off if you don't need it.
+
+# Personal Update
+I just move the DeMod Button towards upper right corner so it won't cover any content.
