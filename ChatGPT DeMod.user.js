@@ -52,14 +52,14 @@ const demod_button = document.createElement('button');
 updateDeModState()
 
 demod_button.style.position = 'fixed';
-demod_button.style.bottom = '0';
-demod_button.style.left = '0';
+demod_button.style.bottom = '20px';
+demod_button.style.right = '20px';
 demod_button.style.color = 'white';
-demod_button.style.padding = `${Math.round(window.innerHeight/60)}px ${Math.round(window.innerWidth/30)}px`;
+demod_button.style.padding = `${window.innerHeight * 0.02}px ${window.innerWidth * 0.04}px`; // dynamically adjust the button size
 demod_button.style.border = 'none';
 demod_button.style.cursor = 'pointer';
 demod_button.style.outline = 'none';
-demod_button.style.borderRadius = `${Math.round(window.innerWidth/100)}px`;
+demod_button.style.borderRadius = '4px';
 demod_button.style.zIndex = 999;
 
 demod_button.addEventListener('click', () => {
@@ -69,10 +69,9 @@ demod_button.addEventListener('click', () => {
 });
 
 function updateDeModState() {
-    demod_button.textContent = `DeMod: ${(is_on ? "On" : "Off")}`;
-    demod_button.style.backgroundColor = is_on ? '#4CAF50' : '#AF4C50';
-    demod_button.style.padding = `${Math.round(window.innerHeight/60)}px ${Math.round(window.innerWidth/30)}px`;
-    demod_button.style.borderRadius = `${Math.round(window.innerWidth/100)}px`;
+    demod_button.textContent = "DeMod: "+(is_on?"On":"Off");
+    demod_button.style.backgroundColor = is_on?'#4CAF50':'#AF4C50';
+    demod_button.style.padding = `${window.innerHeight * 0.02}px ${window.innerWidth * 0.04}px`; // dynamically adjust the button size
 }
 
 document.body.appendChild(demod_button);
