@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      1.2
+// @version      1.3
 // @description  Prevents moderation checks during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -46,22 +46,35 @@ function getEnding() {
 
 const DEMOD_KEY = 'DeModState';
 var is_on = false;
+var is_over = false;
 
  // Adding DeMod button
-const demod_button = document.createElement('button');
-updateDeModState()
+const demod_div = document.createElement('div');
+demod_div.style.position = 'fixed';
+demod_div.style.top = '0px';
+demod_div.style.left = '50%';
+demod_div.style.transform = 'translate(-50%, 0%)';
+demod_div.style.width = '124px';
+demod_div.style.height = '24px';
+demod_div.style.zIndex = 999;
 
+demod_div.onmouseover = function() {
+    is_over = true;
+    updateDeModState();
+};
+demod_div.onmouseout = function() {
+    is_over = false;
+    updateDeModState();
+};
+
+const demod_button = document.createElement('button');
 demod_button.style.position = 'fixed';
-demod_button.style.bottom = '2px';
-demod_button.style.left = '50%';
-demod_button.style.transform = 'translate(-50%, 0%)';
+demod_button.style.top = '0px';
 demod_button.style.color = 'white';
-demod_button.style.padding = '12px 20px';
+demod_button.style.width = '100%';
 demod_button.style.border = 'none';
 demod_button.style.cursor = 'pointer';
 demod_button.style.outline = 'none';
-demod_button.style.borderRadius = '4px';
-demod_button.style.zIndex = 999;
 
 demod_button.addEventListener('click', () => {
     is_on = !is_on;
@@ -69,8 +82,22 @@ demod_button.addEventListener('click', () => {
     updateDeModState();
 });
 
+demod_div.appendChild(demod_button);
+updateDeModState()
+
 function updateDeModState() {
-    demod_button.textContent = "DeMod: "+(is_on?"On":"Off");
+    if( is_over ) {
+        demod_button.textContent = "DeMod: "+(is_on?"On":"Off");
+        demod_button.style.height = 'auto';
+        demod_button.style.padding = '6px 12px';
+        demod_button.style.borderRadius = '4px';
+    }
+    else {
+        demod_button.textContent = "";
+        demod_button.style.height = '6px';
+        demod_button.style.padding = '0px';
+        demod_button.style.borderRadius = '0px';
+    }
 	demod_button.style.backgroundColor = is_on?'#4CAF50':'#AF4C50';
 }
 
@@ -174,7 +201,7 @@ target_window.fetch = async (...arg) => {
     if( conversations != null ) {
         conversation_page = Math.floor(Math.random() * conversations.conversations.length);
         updateDeModState();
-        document.body.appendChild(demod_button);
+        document.body.appendChild(demod_div);
     }
 
     XMLHttpRequest.prototype.realOpen = XMLHttpRequest.prototype.open;
