@@ -84,13 +84,22 @@ function updateDeModState() {
     if( is_over ) {
         demod_button.textContent = "DeMod: "+(is_on?"On":"Off");
         demod_button.style.height = 'auto';
-        demod_button.style.padding = '6px 12px';
+        if( is_on ) {
+            demod_button.style.border = '1px dotted white';
+            demod_button.style.padding = '3px 11px';
+        }
+        else {
+            demod_button.style.border = '0px';
+            demod_button.style.padding = '4px 12px';
+        }
         demod_button.style.borderRadius = '4px';
     }
     else {
         demod_button.textContent = "";
         demod_button.style.height = '6px';
         demod_button.style.padding = '0px';
+        if( is_on ) demod_button.style.border = '2px dotted white';
+        else demod_button.style.border = '0px';
         demod_button.style.borderRadius = '0px';
     }
 	demod_button.style.backgroundColor = is_on?'#4CAF50':'#AF4C50';
