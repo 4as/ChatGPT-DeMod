@@ -84,10 +84,23 @@ var intercept_count_total = 0;
 const original_fetch = unsafeWindow.fetch;
 
 unsafeWindow.fetch = async (...arg) => {
-    if( has_conversations && arg[0].indexOf('/moderation') != -1 ) {
+    var fetch_url = arg[0];
+	var is_request = false;
+	if( typeof fetch_url !== 'string' ) {
+		fetch_url = fetch_url.url;
+		is_request = true;
+	}
+    if( has_conversations && fetch_url.indexOf('/moderation') != -1 ) {
         if( is_on ) {
             intercept_count_total ++;
-            var body = JSON.parse(arg[1].body);
+			var request_body = "";
+			if( is_request ) {
+				request_body = await arg[0].text();
+			}
+			else {
+				request_body = arg[1].body;
+			}
+            var body = JSON.parse( request_body );
             if( body.hasOwnProperty("input") ) {
                 var text = null;
                 if( currently_responding ) {
@@ -125,7 +138,24 @@ unsafeWindow.fetch = async (...arg) => {
             }
             console.log("Moderation call intercepted. Normal count: "+intercept_count_normal+", extended count: "+intercept_count_extended+", total: "+intercept_count_total);
             currently_responding = !currently_responding;
-            arg[1].body = JSON.stringify(body);
+			if( is_request ) {
+                var request = arg[0];
+				arg[0] = new Request(fetch_url, {
+					method: request.method,
+					headers: request.headers,
+					body: JSON.stringify(body),
+					referrer: request.referrer,
+					referrerPolicy: request.referrerPolicy,
+					mode: request.mode,
+					credentials: request.credentials,
+					cache: request.cache,
+					redirect: request.redirect,
+					integrity: request.integrity,
+				});
+			}
+			else {
+				arg[1].body = JSON.stringify(body);
+			}
         }
         used_opening = true;
     }
