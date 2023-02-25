@@ -65,7 +65,7 @@ demod_button.style.zIndex = 999;
 
 demod_button.addEventListener('click', () => {
     is_on = !is_on;
-    GM.setValue(DEMOD_KEY, is_on);
+    setDeModState(is_on);
     updateDeModState();
 });
 
@@ -81,12 +81,13 @@ var intercept_count_normal = 0;
 var intercept_count_extended = 0;
 var intercept_count_total = 0;
 
-const original_fetch = unsafeWindow.fetch;
+const target_window = typeof(unsafeWindow)==='undefined' ? window : unsafeWindow;
+const original_fetch = target_window.fetch;
 
-unsafeWindow.fetch = async (...arg) => {
+target_window.fetch = async (...arg) => {
     var fetch_url = arg[0];
 	var is_request = false;
-	if( typeof fetch_url !== 'string' ) {
+	if( typeof(fetch_url) !== 'string' ) {
 		fetch_url = fetch_url.url;
 		is_request = true;
 	}
@@ -163,10 +164,9 @@ unsafeWindow.fetch = async (...arg) => {
 }
 
 
-
 (async () => {
     'use strict';
-    is_on = await GM.getValue(DEMOD_KEY, false);
+    is_on = await getDeModState();
     await fetch(url)
         .then(res => res.json())
         .then(out => { (conversations = out); has_conversations = true; console.log("Conversations loaded! Openings: "+conversations.openings.length+", main: "+conversations.conversations.length+", endings: "+conversations.endings.length); } )
@@ -184,3 +184,24 @@ unsafeWindow.fetch = async (...arg) => {
     }
 
 })();
+
+
+async function getDeModState() {
+    if( typeof(GM) !== 'undefined' ) {
+        return await GM.getValue(DEMOD_KEY, false);
+    }
+    else {
+        var state = target_window.localStorage.getItem(DEMOD_KEY);
+        if (state == null) return true;
+        return (state == "false") ? false : true;
+    }
+}
+
+function setDeModState(state) {
+    if( typeof(GM) !== 'undefined' ) {
+        return GM.setValue(DEMOD_KEY, state);
+    }
+    else {
+        target_window.localStorage.setItem(DEMOD_KEY, state);
+    }
+}
