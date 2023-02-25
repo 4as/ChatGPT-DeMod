@@ -8,10 +8,10 @@ Make sure the script is enabled by navigating the **Installed Userscripts** tab.
 
 # Usage
 Once activated the script adds a floating button to the ChatGPT's conversation page.
-The button starts partly hidden and only a small stripe of pixels will be visible at the top of the page.
-![Progress results](res/demod-hidden.jpg)  
-If you move your mouse close to it the button will reveal itself and become clickable. If you're on the mobile devices you can just tap somewhere close to it - the tappable area is significantly larger than just those few pixels initially visible. 
-![Progress results](res/demod-shown.jpg)  
+The button starts partly hidden and only a small stripe of pixels will be visible at the top of the page.  
+![Progress results](res/demod-hidden.png)  
+If you move your mouse close to it the button will reveal itself and become clickable. If you're on the mobile devices you can just tap somewhere close to it - the tappable area is significantly larger than just those few pixels initially visible.  
+![Progress results](res/demod-shown.png)  
 The button will read either "DeMod: Off" or "DeMod: On." Clicking it switches between the two modes. While DeMod is **On** the script will intercept moderation calls and replace them with random texts from its database.  
 In other words DeMod makes the conversation look like it's about something completely different that what you're actually sending (and receiving).  
 It's done this way to ensure that nothing will seem out of place. No one knows what kind of security checks does the ChatGPT's backend use, so to not risk anything by blocking something we shouldn't the checks still go through but with different messages.  
