@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      1.4
+// @version      1.5
 // @description  Prevents moderation checks during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -1667,11 +1667,13 @@ var demod_init = async function() {
             ]
         };
 
-        is_on = getDeModState();
-        conversation_page = Math.floor(Math.random() * conversations.conversations.length);
-        updateDeModState();
-        document.body.appendChild(demod_div);
-        console.log("DeMod intercepter is ready. Conversations: "+conversations.conversations.length+", openings: "+conversations.openings.length+", endings: "+conversations.endings.length);
+        getDeModState().then(result => {
+            is_on = result;
+            conversation_page = Math.floor(Math.random() * conversations.conversations.length);
+            updateDeModState();
+            document.body.appendChild(demod_div);
+            console.log("DeMod intercepter is ready. Conversations: "+conversations.conversations.length+", openings: "+conversations.openings.length+", endings: "+conversations.endings.length);
+        } );
     }
 
     // The script's core logic is being injected into the page to work around different JavaScript contexts
