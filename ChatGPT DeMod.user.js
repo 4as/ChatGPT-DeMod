@@ -203,9 +203,11 @@ var demod_init = async function() {
             this.realOpen (method, url, async, user, password);
         }
 
-        async function getDeModState() {
+        function getDeModState() {
             if( typeof(GM) !== 'undefined' ) {
-                return await GM.getValue(DEMOD_KEY, false);
+                var result = null;
+                GM.getValue(DEMOD_KEY, false).then(v => {result = v;});
+                return result;
             }
             else {
                 var state = target_window.localStorage.getItem(DEMOD_KEY);
@@ -216,7 +218,9 @@ var demod_init = async function() {
 
         function setDeModState(state) {
             if( typeof(GM) !== 'undefined' ) {
-                return GM.setValue(DEMOD_KEY, state);
+                var result = null;
+                GM.setValue(DEMOD_KEY, state).then(v => {result = v;});
+                return result;
             }
             else {
                 target_window.localStorage.setItem(DEMOD_KEY, state);
@@ -1667,13 +1671,11 @@ var demod_init = async function() {
             ]
         };
 
-        getDeModState().then(result => {
-            is_on = result;
-            conversation_page = Math.floor(Math.random() * conversations.conversations.length);
-            updateDeModState();
-            document.body.appendChild(demod_div);
-            console.log("DeMod intercepter is ready. Conversations: "+conversations.conversations.length+", openings: "+conversations.openings.length+", endings: "+conversations.endings.length);
-        } );
+        is_on = getDeModState();
+        conversation_page = Math.floor(Math.random() * conversations.conversations.length);
+        updateDeModState();
+        document.body.appendChild(demod_div);
+        console.log("DeMod intercepter is ready. Conversations: "+conversations.conversations.length+", openings: "+conversations.openings.length+", endings: "+conversations.endings.length);
     }
 
     // The script's core logic is being injected into the page to work around different JavaScript contexts
