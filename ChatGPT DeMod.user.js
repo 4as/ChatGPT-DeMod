@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      1.5
+// @version      1.6
 // @description  Prevents moderation checks during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -28,7 +28,7 @@ var demod_init = async function() {
         var conversation_idx = 0;
         function getConversation() {
             if( conversation_page >= conversations.conversations.length ) conversation_page = 0;
-            if( conversation_idx == conversations.conversations[conversation_page].length ) return null;
+            if( conversation_idx === conversations.conversations[conversation_page].length ) return null;
             let message = conversations.conversations[conversation_page][conversation_idx];
             conversation_idx ++;
             return message;
@@ -124,18 +124,18 @@ var demod_init = async function() {
                 fetch_url = fetch_url.url;
                 is_request = true;
             }
-            if( fetch_url.indexOf('/moderation') != -1 ) {
+            if( fetch_url.indexOf('/moderation') !== -1 ) {
                 await modifyArgForModeration(arg, fetch_url, is_request);
             }
             var p_response = original_fetch(...arg)
-            if( fetch_url.indexOf('/conversation/') != -1 ) {
+            if( fetch_url.indexOf('/conversation/') !== -1 ) {
                 return filterConversationResponse(await p_response);
             }
             return p_response;
         }
 
         async function filterConversationResponse(original) {
-            if( !is_on || !original.ok || original.headers.get('content-type') != 'application/json' ) {
+            if( !is_on || !original.ok || original.headers.get('content-type') !== 'application/json' ) {
                 return original;
             }
             var body = await original.json();
@@ -157,7 +157,7 @@ var demod_init = async function() {
         async function modifyArgForModeration(arg, fetch_url, is_request) {
             if( is_on ) {
                     intercept_count_total ++;
-                    var request_body = "";
+                    var request_body;
                     if( is_request ) {
                         request_body = await arg[0].text();
                     }
@@ -166,7 +166,7 @@ var demod_init = async function() {
                     }
                     var body = JSON.parse( request_body );
                     if( body.hasOwnProperty("input") ) {
-                        var text = null;
+                        var text;
                         if( currently_responding ) {
                             text = current_message.input + "\n\n"+current_message.output;
                         }
@@ -188,7 +188,7 @@ var demod_init = async function() {
                         var intercepted = false;
                         for(var j = 0; j<body.messages.length; j++) {
                             var msg = body.messages[j];
-                            if( msg.content.content_type == "text" ) {
+                            if( msg.content.content_type === "text" ) {
                                 msg.content.parts = [current_message.output];
                                 intercepted = true;
                             }
@@ -226,7 +226,7 @@ var demod_init = async function() {
         // Bonus functionality: blocking tracking calls
         XMLHttpRequest.prototype.realOpen = XMLHttpRequest.prototype.open;
         XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
-            if( is_on && url.indexOf("/track/?") != -1 ) return;
+            if( is_on && url.indexOf("/track/?") !== -1 ) return;
             this.realOpen (method, url, async, user, password);
         }
 
@@ -238,8 +238,7 @@ var demod_init = async function() {
             }
             else {
                 var state = target_window.localStorage.getItem(DEMOD_KEY);
-                if (state == null) return true;
-                return (state == "false") ? false : true;
+                return state == null || state !== "false";
             }
         }
 
