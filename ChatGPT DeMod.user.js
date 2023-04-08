@@ -125,7 +125,37 @@ var demod_init = async function() {
                 is_request = true;
             }
             if( fetch_url.indexOf('/moderation') != -1 ) {
-                if( is_on ) {
+                await modifyArgForModeration(arg, fetch_url, is_request);
+            }
+            var p_response = original_fetch(...arg)
+            if( fetch_url.indexOf('/conversation/') != -1 ) {
+                return filterConversationResponse(await p_response);
+            }
+            return p_response;
+        }
+
+        async function filterConversationResponse(original) {
+            if( !is_on || !original.ok || original.headers.get('content-type') != 'application/json' ) {
+                return original;
+            }
+            var body = await original.json();
+            if( body.hasOwnProperty("moderation_results") ) {
+                body.moderation_results = [];
+            } else {
+                console.warn("Conversation filter failed, unknown format! Message:\n" + JSON.stringify(body));
+            }
+            var filtered = new Response(new Blob([JSON.stringify(body)], {type : 'application/json'}), {
+                status: original.status,
+                statusText: original.statusText,
+                headers: original.headers
+            });
+            Object.defineProperty(filtered, "url", { value: original.url, writable: false });
+            Object.defineProperty(filtered, "type", { value: original.type, writable: false });
+            return filtered;
+        }
+
+        async function modifyArgForModeration(arg, fetch_url, is_request) {
+            if( is_on ) {
                     intercept_count_total ++;
                     var request_body = "";
                     if( is_request ) {
@@ -192,10 +222,7 @@ var demod_init = async function() {
                     }
                 }
                 used_opening = true;
-            }
-            return original_fetch(...arg);
         }
-
         // Bonus functionality: blocking tracking calls
         XMLHttpRequest.prototype.realOpen = XMLHttpRequest.prototype.open;
         XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
