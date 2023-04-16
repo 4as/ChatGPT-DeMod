@@ -1,15 +1,13 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      1.5
+// @version      1.6
 // @description  Prevents moderation checks during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
 // @downloadURL  https://raw.githubusercontent.com/4as/ChatGPT-DeMod/main/ChatGPT%20DeMod.user.js
 // @updateURL    https://raw.githubusercontent.com/4as/ChatGPT-DeMod/main/ChatGPT%20DeMod.user.js
-// @grant        GM.setValue
-// @grant        GM.getValue
 // @run-at       document-start
 // ==/UserScript==
 
@@ -19,6 +17,9 @@ var demod_init = async function() {
     'use strict';
 
     function main () {
+		const DEMOD_ID = 'demod-cont';
+		if( document.getElementById(DEMOD_ID) !== null ) return;
+		
         function getOpening() {
             var idx = Math.floor(Math.random() * conversations.openings.length);
             return conversations.openings[idx];
@@ -47,6 +48,7 @@ var demod_init = async function() {
 
         // Adding the "hover" area for the DeMod button.
         const demod_div = document.createElement('div');
+		demod_div.setAttribute('id', DEMOD_ID);
         demod_div.style.position = 'fixed';
         demod_div.style.top = '0px';
         demod_div.style.left = '50%';
@@ -204,27 +206,13 @@ var demod_init = async function() {
         }
 
         function getDeModState() {
-            if( typeof(GM) !== 'undefined' ) {
-                var result = null;
-                GM.getValue(DEMOD_KEY, false).then(v => {result = v;});
-                return result;
-            }
-            else {
-                var state = target_window.localStorage.getItem(DEMOD_KEY);
-                if (state == null) return true;
-                return (state == "false") ? false : true;
-            }
+        	var state = target_window.localStorage.getItem(DEMOD_KEY);
+            if (state == null) return true;
+            return (state == "false") ? false : true;
         }
 
         function setDeModState(state) {
-            if( typeof(GM) !== 'undefined' ) {
-                var result = null;
-                GM.setValue(DEMOD_KEY, state).then(v => {result = v;});
-                return result;
-            }
-            else {
-                target_window.localStorage.setItem(DEMOD_KEY, state);
-            }
+            target_window.localStorage.setItem(DEMOD_KEY, state);
         }
 
         const conversations = {
@@ -1682,13 +1670,17 @@ var demod_init = async function() {
     var script = document.createElement('script');
     script.appendChild(document.createTextNode('('+ main +')();'));
     (document.body || document.head || document.documentElement).appendChild(script);
+	
+	// Alternative method of adding DeMod to the chat in case the script injection fails
+	var target_window = typeof(unsafeWindow)==='undefined' ? window : unsafeWindow;
+	target_window.addEventListener("load", main);
 };
 
 if( document.body == null ) {
-    var target_window = typeof(unsafeWindow)==='undefined' ? window : unsafeWindow;
-    target_window.addEventListener("load", demod_init);
+	var target_window = typeof(unsafeWindow)==='undefined' ? window : unsafeWindow;
+	target_window.addEventListener("DOMContentLoaded", demod_init);
 }
 else {
-    demod_init();
+	demod_init();
 }
 
