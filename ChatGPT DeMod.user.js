@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      1.6
+// @version      1.7
 // @description  Prevents moderation checks during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -19,7 +19,7 @@ var demod_init = async function() {
     function main () {
 		const DEMOD_ID = 'demod-cont';
 		if( document.getElementById(DEMOD_ID) !== null ) return;
-		
+
         function getOpening() {
             var idx = Math.floor(Math.random() * conversations.openings.length);
             return conversations.openings[idx];
@@ -126,7 +126,36 @@ var demod_init = async function() {
                 fetch_url = fetch_url.url;
                 is_request = true;
             }
-            if( fetch_url.indexOf('/moderation') != -1 ) {
+
+            var is_conversation = fetch_url.indexOf('/conversation') != -1 && fetch_url.indexOf('/conversations') == -1;
+            if( is_conversation ) {
+                var conv_request = null;
+                if( is_request ) {
+                    if( Object.hasOwn(arg[0], 'text') && (typeof arg[0].text === 'function') ) {
+                       conv_request = await arg[0].text();
+                    }
+                }
+                else {
+                    if( Object.hasOwn(arg[1], 'body') ) {
+                        conv_request = arg[1].body;
+                    }
+                }
+                if( conv_request !== null ) {
+                    var conv_body = JSON.parse( conv_request );
+                    conv_body.supports_modapi = false;
+
+                     if( is_request ) {
+                        arg[0] = cloneRequest(arg[0], fetch_url, conv_body);
+                    }
+                    else {
+                        arg[1].body = JSON.stringify(conv_body);
+                    }
+                }
+                else {
+                    is_conversation = false;
+                }
+            }
+            else if( fetch_url.indexOf('/moderation') != -1 ) {
                 if( is_on ) {
                     intercept_count_total ++;
                     var request_body = "";
@@ -136,8 +165,8 @@ var demod_init = async function() {
                     else {
                         request_body = arg[1].body;
                     }
-                    var body = JSON.parse( request_body );
-                    if( body.hasOwnProperty("input") ) {
+                    var mod_body = JSON.parse( request_body );
+                    if( mod_body.hasOwnProperty("input") ) {
                         var text = null;
                         if( currently_responding ) {
                             text = current_message.input + "\n\n"+current_message.output;
@@ -154,12 +183,12 @@ var demod_init = async function() {
                         }
                         if( text == null ) text = "Hi!";
                         intercept_count_normal ++;
-                        body.input = text;
+                        mod_body.input = text;
                     }
                     else {
                         var intercepted = false;
-                        for(var j = 0; j<body.messages.length; j++) {
-                            var msg = body.messages[j];
+                        for(var j = 0; j<mod_body.messages.length; j++) {
+                            var msg = mod_body.messages[j];
                             if( msg.content.content_type == "text" ) {
                                 msg.content.parts = [current_message.output];
                                 intercepted = true;
@@ -169,33 +198,22 @@ var demod_init = async function() {
                             intercept_count_extended ++;
                         }
                         else {
-                            console.error("Moderation call interception failed, unknown format! Message:\n"+JSON.stringify(body));
+                            console.error("Moderation call interception failed, unknown format! Message:\n"+JSON.stringify(mod_body));
                         }
                     }
                     console.log("Moderation call intercepted. Normal count: "+intercept_count_normal+", extended count: "+intercept_count_extended+", total: "+intercept_count_total);
                     currently_responding = !currently_responding;
                     if( is_request ) {
-                        var request = arg[0];
-                        arg[0] = new Request(fetch_url, {
-                            method: request.method,
-                            headers: request.headers,
-                            body: JSON.stringify(body),
-                            referrer: request.referrer,
-                            referrerPolicy: request.referrerPolicy,
-                            mode: request.mode,
-                            credentials: request.credentials,
-                            cache: request.cache,
-                            redirect: request.redirect,
-                            integrity: request.integrity,
-                        });
+                        arg[0] = cloneRequest(arg[0], fetch_url, mod_body);
                     }
                     else {
-                        arg[1].body = JSON.stringify(body);
+                        arg[1].body = JSON.stringify(mod_body);
                     }
                 }
                 used_opening = true;
             }
-            return original_fetch(...arg);
+            var original_promise = original_fetch(...arg);
+            return original_promise;
         }
 
         // Bonus functionality: blocking tracking calls
@@ -213,6 +231,21 @@ var demod_init = async function() {
 
         function setDeModState(state) {
             target_window.localStorage.setItem(DEMOD_KEY, state);
+        }
+
+        function cloneRequest(request, fetch_url, body) {
+            return new Request(fetch_url, {
+                            method: request.method,
+                            headers: request.headers,
+                            body: JSON.stringify(body),
+                            referrer: request.referrer,
+                            referrerPolicy: request.referrerPolicy,
+                            mode: request.mode,
+                            credentials: request.credentials,
+                            cache: request.cache,
+                            redirect: request.redirect,
+                            integrity: request.integrity,
+                        });
         }
 
         const conversations = {
@@ -1670,7 +1703,7 @@ var demod_init = async function() {
     var script = document.createElement('script');
     script.appendChild(document.createTextNode('('+ main +')();'));
     (document.body || document.head || document.documentElement).appendChild(script);
-	
+
 	// Alternative method of adding DeMod to the chat in case the script injection fails
 	var target_window = typeof(unsafeWindow)==='undefined' ? window : unsafeWindow;
 	target_window.addEventListener("load", main);
