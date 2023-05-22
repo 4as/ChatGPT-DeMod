@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      1.7
+// @version      1.8
 // @description  Prevents moderation checks during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -131,12 +131,12 @@ var demod_init = async function() {
             if( is_conversation ) {
                 var conv_request = null;
                 if( is_request ) {
-                    if( Object.hasOwn(arg[0], 'text') && (typeof arg[0].text === 'function') ) {
+                    if( arg[0] !== undefined && arg[0].hasOwnProperty('text') && (typeof arg[0].text === 'function') ) {
                        conv_request = await arg[0].text();
                     }
                 }
                 else {
-                    if( Object.hasOwn(arg[1], 'body') ) {
+                    if( arg[1] !== undefined && arg[1].hasOwnProperty('body') ) {
                         conv_request = arg[1].body;
                     }
                 }
