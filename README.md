@@ -3,6 +3,11 @@
 This userscript for Tampermonkey and Greasemonkey allows you to disable moderation checks during conversations with ChatGPT, i.e. it will prevent "This content might violate our content policy" warnings from being triggered.  
 ![Warning message removed](res/demod-warning.png)  
 
+In particular this means that DeMod will:
+1. Prevent your individual messages from being checked. Without DeMod each message will be sent to a moderation check.
+2. Stops share function from working. Without DeMod opening the share dialog triggers a moderation check on the whole conversation.
+3. Redirects any attempts at accessing a conversation directly through the URL (including refreshing the page) back to the "new chat" page. Without DeMod opening a conversation through a link triggers a moderation check on the whole conversation.
+
 # Installation
 First of all you will have to install [Tampermonkey](https://www.tampermonkey.net) plugin for your browser on PC (if you're on a mobile then Kiwi browser for Android and Userscripts for Safari on iOS will work just as well). Then you'll have to install the userscript, which can be done in one of the following ways:  
 1. The easiest way is probably to just open the *ChatGPT DeMod.user.js* file in the [raw view](https://github.com/4as/ChatGPT-DeMod/raw/main/ChatGPT%20DeMod.user.js) and Tampermonkey should detect it and open the installation page.  
@@ -23,3 +28,6 @@ The button will read either "DeMod: Off" or "DeMod: On." Clicking it switches be
 In other words DeMod makes the conversation look like it's about something completely different that what you're actually sending (and receiving).  
 It's done this way to ensure that nothing will seem out of place. No one knows what kind of security checks does the ChatGPT's backend use, so to not risk anything by blocking something we shouldn't the checks still go through but with different messages.  
 To further ensure that nothing seems out of place keep in mind you can always turn DeMod off if you don't need it.
+
+# Knows issues
+Bromite browser is not supported. Since the May 24th update OpenAI is now using a stricter Content Policy checks on injected scripts and Bromite doesn't offer a way to circumvent that.

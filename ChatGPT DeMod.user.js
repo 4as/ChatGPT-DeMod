@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      1.8
+// @version      2.0
 // @description  Prevents moderation checks during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -9,6 +9,7 @@
 // @downloadURL  https://raw.githubusercontent.com/4as/ChatGPT-DeMod/main/ChatGPT%20DeMod.user.js
 // @updateURL    https://raw.githubusercontent.com/4as/ChatGPT-DeMod/main/ChatGPT%20DeMod.user.js
 // @run-at       document-start
+// @grant        none
 // ==/UserScript==
 
 'use strict';
@@ -120,11 +121,19 @@ var demod_init = async function() {
         var target_window = typeof(unsafeWindow)==='undefined' ? window : unsafeWindow;
         var original_fetch = target_window.fetch;
         target_window.fetch = async function(...arg) {
+            if( !is_on ) {
+                return original_fetch(...arg);
+            }
+
             var fetch_url = arg[0];
             var is_request = false;
             if( typeof(fetch_url) !== 'string' ) {
                 fetch_url = fetch_url.url;
                 is_request = true;
+            }
+
+            if( fetch_url.indexOf('/share/create') != -1 ) {
+                return new Response("", { status: 404, statusText: "Not found" } );
             }
 
             var is_conversation = fetch_url.indexOf('/conversation') != -1 && fetch_url.indexOf('/conversations') == -1;
@@ -156,59 +165,57 @@ var demod_init = async function() {
                 }
             }
             else if( fetch_url.indexOf('/moderation') != -1 ) {
-                if( is_on ) {
-                    intercept_count_total ++;
-                    var request_body = "";
-                    if( is_request ) {
-                        request_body = await arg[0].text();
+                intercept_count_total ++;
+                var request_body = "";
+                if( is_request ) {
+                    request_body = await arg[0].text();
+                }
+                else {
+                    request_body = arg[1].body;
+                }
+                var mod_body = JSON.parse( request_body );
+                if( mod_body.hasOwnProperty("input") ) {
+                    var text = null;
+                    if( currently_responding ) {
+                        text = current_message.input + "\n\n"+current_message.output;
                     }
                     else {
-                        request_body = arg[1].body;
-                    }
-                    var mod_body = JSON.parse( request_body );
-                    if( mod_body.hasOwnProperty("input") ) {
-                        var text = null;
-                        if( currently_responding ) {
-                            text = current_message.input + "\n\n"+current_message.output;
+                        if( !used_opening ) {
+                            current_message = getOpening();
                         }
                         else {
-                            if( !used_opening ) {
-                                current_message = getOpening();
-                            }
-                            else {
-                                current_message = getConversation();
-                                if(current_message == null) current_message = getEnding();
-                            }
-                            text = current_message.input;
+                            current_message = getConversation();
+                            if(current_message == null) current_message = getEnding();
                         }
-                        if( text == null ) text = "Hi!";
-                        intercept_count_normal ++;
-                        mod_body.input = text;
+                        text = current_message.input;
+                    }
+                    if( text == null ) text = "Hi!";
+                    intercept_count_normal ++;
+                    mod_body.input = text;
+                }
+                else {
+                    var intercepted = false;
+                    for(var j = 0; j<mod_body.messages.length; j++) {
+                        var msg = mod_body.messages[j];
+                        if( msg.content.content_type == "text" ) {
+                            msg.content.parts = [current_message.output];
+                            intercepted = true;
+                        }
+                    }
+                    if( intercepted ) {
+                        intercept_count_extended ++;
                     }
                     else {
-                        var intercepted = false;
-                        for(var j = 0; j<mod_body.messages.length; j++) {
-                            var msg = mod_body.messages[j];
-                            if( msg.content.content_type == "text" ) {
-                                msg.content.parts = [current_message.output];
-                                intercepted = true;
-                            }
-                        }
-                        if( intercepted ) {
-                            intercept_count_extended ++;
-                        }
-                        else {
-                            console.error("Moderation call interception failed, unknown format! Message:\n"+JSON.stringify(mod_body));
-                        }
+                        console.error("Moderation call interception failed, unknown format! Message:\n"+JSON.stringify(mod_body));
                     }
-                    console.log("Moderation call intercepted. Normal count: "+intercept_count_normal+", extended count: "+intercept_count_extended+", total: "+intercept_count_total);
-                    currently_responding = !currently_responding;
-                    if( is_request ) {
-                        arg[0] = cloneRequest(arg[0], fetch_url, mod_body);
-                    }
-                    else {
-                        arg[1].body = JSON.stringify(mod_body);
-                    }
+                }
+                console.log("Moderation call intercepted. Normal count: "+intercept_count_normal+", extended count: "+intercept_count_extended+", total: "+intercept_count_total);
+                currently_responding = !currently_responding;
+                if( is_request ) {
+                    arg[0] = cloneRequest(arg[0], fetch_url, mod_body);
+                }
+                else {
+                    arg[1].body = JSON.stringify(mod_body);
                 }
                 used_opening = true;
             }
@@ -1709,11 +1716,16 @@ var demod_init = async function() {
 	target_window.addEventListener("load", main);
 };
 
-if( document.body == null ) {
-	var target_window = typeof(unsafeWindow)==='undefined' ? window : unsafeWindow;
+var target_window = typeof(unsafeWindow)==='undefined' ? window : unsafeWindow;
+var current_url = window.location.href;
+if( current_url.match("/c/") || current_url.match("/share/") ) {
+   window.location.replace("https://chat.openai.com");
+}
+else if( document.body == null ) {
 	target_window.addEventListener("DOMContentLoaded", demod_init);
 }
 else {
 	demod_init();
 }
+
 
