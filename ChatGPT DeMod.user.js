@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      3.0
+// @version      3.1
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -111,6 +111,18 @@ var demod_init = async function() {
             demod_button.style.backgroundColor = is_on?'#4CAF50':'#AF4C50';
         }
 
+        function clearFlagging(text) {
+            text = text.replaceAll(/\"flagged\": ?true/ig, "\"flagged\": false");
+            text = text.replaceAll(/\"blocked\": ?true/ig, "\"blocked\": false");
+            return text;
+        }
+
+        const ConversationType = {
+            UNKNOWN : 0,
+            INIT : 1,
+            PROMPT : 2,
+        };
+
         var current_message = null;
         var used_opening = Math.random() > 0.5;
         var currently_responding = false;
@@ -137,6 +149,7 @@ var demod_init = async function() {
             }
 
             var is_conversation = fetch_url.indexOf('/conversation') != -1 && fetch_url.indexOf('/conversations') == -1;
+            var convo_type = ConversationType.UNKNOWN;
             if( is_conversation ) {
                 var conv_request = null;
                 if( is_request ) {
@@ -149,11 +162,14 @@ var demod_init = async function() {
                         conv_request = arg[1].body;
                     }
                 }
+
                 if( conv_request !== null ) {
+                    convo_type = ConversationType.PROMPT;
                     var conv_body = JSON.parse( conv_request );
+
                     conv_body.supports_modapi = false;
 
-                     if( is_request ) {
+                    if( is_request ) {
                         arg[0] = cloneRequest(arg[0], fetch_url, conv_body);
                     }
                     else {
@@ -161,7 +177,7 @@ var demod_init = async function() {
                     }
                 }
                 else {
-                    is_conversation = false;
+                    convo_type = ConversationType.INIT;
                 }
             }
             else if( fetch_url.indexOf('/moderation') != -1 ) {
@@ -224,51 +240,106 @@ var demod_init = async function() {
             if( is_conversation ) {
                 var original_result = await original_promise;
 
-                if( original_result.ok ) {
-                    var is_done = false;
-                    var encoder = new TextEncoder();
-                    var decoder = new TextDecoder();
-                    var reader = original_result.body.getReader();
+                if( !original_result.ok ) {
+                    return original_result;
+                }
 
-                    const stream = new ReadableStream({
-                        async start(controller) {
-                            try {
-                                while (true) {
-                                    const { done, value } = await reader.read();
-                                    if (done) {
-                                        controller.close();
-                                        break;
-                                    }
+                switch(convo_type) {
+                    case ConversationType.PROMPT: {
+                        console.log("Processing basic prompted conversation. Scanning for moderation results...");
+                        var is_done = false;
+                        var encoder = new TextEncoder();
+                        var decoder = new TextDecoder();
+                        var reader = original_result.body.getReader();
+                        var payload = null;
+                        var last_chunk = '';
+                        var is_blocked = false;
 
-                                    var chunk = value || new Uint8Array;
-                                    chunk = chunk ? decoder.decode(chunk, {stream: !original_result.done}) : "";
-                                    if( chunk.startsWith("data:") ) {
-                                        var done_idx = chunk.indexOf("[DONE]");
-                                        if( done_idx != -1 && done_idx < 9 ) {
+                        const stream = new ReadableStream({
+                            async start(controller) {
+                                try {
+                                    while (true) {
+                                        const { done, value } = await reader.read();
+                                        if (done) {
+                                            controller.close();
+                                            break;
+                                        }
+
+                                        var chunk_data = value || new Uint8Array;
+                                        var chunk = chunk_data ? decoder.decode(chunk_data, {stream: !original_result.done}) : "";
+                                        if( chunk.indexOf("data: [DONE]") != -1) {
                                             is_done = true;
+                                            if( is_blocked && payload !== null ) {
+                                                payload.message.content.parts[0] = "DeMod: Request completed. You can now refresh the conversation.";
+                                                controller.enqueue( encoder.encode("data: "+JSON.stringify(payload)+"\n\n") );
+                                            }
+                                        }
+                                        else if( chunk.startsWith("data: ") && payload === null) {
+                                            try {
+                                               var payload_text = chunk.substring(5);
+                                               var payload_end = payload_text.indexOf("\n");
+                                               payload_text = payload_text.substring(0, payload_end);
+                                               payload = JSON.parse( payload_text );
+                                               if( !payload.hasOwnProperty('message') || !payload.message.hasOwnProperty('content') || !payload.message.content.hasOwnProperty('parts') ) {
+                                                   payload = null;
+                                               }
+                                            }
+                                            catch(e) { }
+                                        }
+
+                                        if( chunk.match(/\"flagged\": ?true/ig) ) {
+                                            console.log("Message has been flagged. Preventing removal.");
+                                        }
+
+                                        last_chunk = chunk;
+
+                                        controller.enqueue( encoder.encode(clearFlagging(chunk)) );
+
+                                        if( chunk.match(/\"blocked\": ?true/ig) ) {
+                                            is_blocked = true;
+                                            if( payload !== null ) {
+                                                payload.message.content.parts[0] = "DeMod: Response generation has been blocked by moderation. Waiting for ChatGPT to finalize the request...";
+                                                controller.enqueue( encoder.encode("data: "+JSON.stringify(payload)+"\n\n") );
+                                            }
+                                        }
+
+                                        if( is_done ) {
+                                            controller.close();
+                                            break;
                                         }
                                     }
-                                    if( chunk.match(/(\"flagged\"|\"blocked\"): ?true/ig) ) {
-                                        console.log("Message has been flagged. Preventing removal.");
-                                    }
-
-                                    chunk = chunk.replaceAll(/\"flagged\": ?true/ig, "\"blocked\": false");
-                                    chunk = chunk.replaceAll(/\"blocked\": ?true/ig, "\"flagged\": false");
-                                    chunk = encoder.encode(chunk);
-
-                                    controller.enqueue(chunk);
+                                } catch (error) {
+                                    controller.error(error);
                                 }
-                            } catch (error) {
-                                controller.error(error);
-                            }
-                        },
-                    });
+                            },
+                        });
 
-                    return new Response(stream, {
-                        status: original_result.status,
-                        statusText: original_result.statusText,
-                        headers: original_result.headers,
-                    });
+                        return new Response(stream, {
+                            status: original_result.status,
+                            statusText: original_result.statusText,
+                            headers: original_result.headers,
+                        });
+                        break;
+                    }
+                    case ConversationType.INIT: {
+                        console.log("Processing conversation initialization. Checking if the conversation has existing moderation results.");
+                        var convo_init = await original_result.json();
+                        if( convo_init.hasOwnProperty('moderation_results') ) {
+                            for(var mod_key in convo_init.moderation_results) {
+                                if( convo_init.moderation_results[mod_key].blocked ) {
+                                    console.log("Blocked message found. Downgrading from blocked to flagged.");
+                                    convo_init.moderation_results[mod_key].blocked = false;
+                                    convo_init.moderation_results[mod_key].flagged = true;
+                                }
+                            }
+                        }
+                        return new Response(JSON.stringify(convo_init), {
+                            status: original_result.status,
+                            statusText: original_result.statusText,
+                            headers: original_result.headers,
+                        });
+                        break;
+                    }
                 }
             }
 
