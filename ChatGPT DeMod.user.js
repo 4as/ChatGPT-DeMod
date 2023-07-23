@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      2.0
-// @description  Prevents moderation checks during conversations with ChatGPT
+// @version      3.0
+// @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
@@ -219,7 +219,59 @@ var demod_init = async function() {
                 }
                 used_opening = true;
             }
+
             var original_promise = original_fetch(...arg);
+            if( is_conversation ) {
+                var original_result = await original_promise;
+
+                if( original_result.ok ) {
+                    var is_done = false;
+                    var encoder = new TextEncoder();
+                    var decoder = new TextDecoder();
+                    var reader = original_result.body.getReader();
+
+                    const stream = new ReadableStream({
+                        async start(controller) {
+                            try {
+                                while (true) {
+                                    const { done, value } = await reader.read();
+                                    if (done) {
+                                        controller.close();
+                                        break;
+                                    }
+
+                                    var chunk = value || new Uint8Array;
+                                    chunk = chunk ? decoder.decode(chunk, {stream: !original_result.done}) : "";
+                                    if( chunk.startsWith("data:") ) {
+                                        var done_idx = chunk.indexOf("[DONE]");
+                                        if( done_idx != -1 && done_idx < 9 ) {
+                                            is_done = true;
+                                        }
+                                    }
+                                    if( chunk.match(/(\"flagged\"|\"blocked\"): ?true/ig) ) {
+                                        console.log("Message has been flagged. Preventing removal.");
+                                    }
+
+                                    chunk = chunk.replaceAll(/\"flagged\": ?true/ig, "\"blocked\": false");
+                                    chunk = chunk.replaceAll(/\"blocked\": ?true/ig, "\"flagged\": false");
+                                    chunk = encoder.encode(chunk);
+
+                                    controller.enqueue(chunk);
+                                }
+                            } catch (error) {
+                                controller.error(error);
+                            }
+                        },
+                    });
+
+                    return new Response(stream, {
+                        status: original_result.status,
+                        statusText: original_result.statusText,
+                        headers: original_result.headers,
+                    });
+                }
+            }
+
             return original_promise;
         }
 
