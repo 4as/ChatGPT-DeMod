@@ -1,14 +1,16 @@
 
 
 # ChatGPT-DeMod
-This userscript for Tampermonkey and Greasemonkey allows you to hide results of the moderation checks during conversations with ChatGPT, i.e. your messages will no longer be removed but they will still be flagged by moderation.  
-![Warning message removed](res/demod-warning2.png)  
+This userscript for Tampermonkey and Greasemonkey allows you to hide results of the moderation checks during conversations with ChatGPT, i.e. your messages will no longer be removed or visibly marked, but the moderation still sees them.  
+![Warning message removed](res/demod-warning3.png)  
 
 ### The script no longer prevents moderation checks. It only hides the results.
 
-DeMod is intended for people that just don't care about being moderated, they just don't want to see their messages being removed. However, the script will still stop some functionalities from working so your old conversation won't be rechecked. In particular this means DeMod will:
-1. Stops share function from working. Without DeMod opening the share dialog triggers a moderation check on the whole conversation.
+DeMod is intended for people that just don't care about being moderated, they just don't want to see their messages being removed.  
+In particular this means DeMod will:
+1. Stops the "share" function from working. Without DeMod opening the share dialog triggers a moderation check on the whole conversation.
 2. Redirects any attempts at accessing a conversation directly through the URL (including refreshing the page) back to the "new chat" page. Without DeMod opening a conversation through a link triggers a moderation check on the whole conversation.
+3. If your message gets blocked (red warning), DeMod will attempt to read it anyway once ChatGPT finishes generating a response.
 
 # Installation
 First of all you will have to install [Tampermonkey](https://www.tampermonkey.net) plugin for your browser on PC (if you're on a mobile then Kiwi browser for Android and Userscripts for Safari on iOS will work just as well). Then you'll have to install the userscript, which can be done in one of the following ways:  
@@ -26,8 +28,9 @@ The button starts partly hidden and only a small stripe of pixels will be visibl
 If you move your mouse close to it the button will reveal itself and become clickable. If you're on the mobile devices you can just tap somewhere close to it - the tappable area is significantly larger than just those few pixels initially visible.  
 **If you do not see the button then the script IS NOT WORKING.** Do not assume the script is working if you don't see the indicator.  
 ![Progress results](res/demod-shown.png)  
-The button will read either "DeMod: Off" or "DeMod: On." Clicking it switches between the two modes. While DeMod is **On** the script will intercept conversation/moderation calls and modify each response so it won't contain any information about your message being flagged.
-**This means your messages are still being checked by the moderation. When you refresh the page you will see which ones were actually flagged.**
+The button will read either "DeMod: Off" or "DeMod: On." Clicking it switches between the two modes. While DeMod is **On** the script will intercept conversation/moderation calls and modify each response so it won't contain any information about your message being flagged.  
+
+**Remember, even though it might seem like your messages are no longer being moderated, they still are! Each and every message goes through OpenAI's moderation and there is no way to prevent that.**
 
 
 # Knows issues
