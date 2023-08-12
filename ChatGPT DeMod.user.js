@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      3.2
+// @version      3.3
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -25,12 +25,6 @@ var demod_init = async function() {
         var is_on = false;
         var is_over = false;
 
-        const ButtonState = {
-            DISABLED : 0,
-            OFF : 1,
-            ON : 2,
-        };
-
         // Adding the "hover" area for the DeMod button.
         const demod_div = document.createElement('div');
         demod_div.setAttribute('id', DEMOD_ID);
@@ -38,24 +32,16 @@ var demod_init = async function() {
         demod_div.style.top = '0px';
         demod_div.style.left = '50%';
         demod_div.style.transform = 'translate(-50%, 0%)';
-        demod_div.style.width = '128px';
+        demod_div.style.width = '254px';
         demod_div.style.height = '24px';
         demod_div.style.display = 'inline-block';
         demod_div.style.verticalAlign = 'top';
         demod_div.style.zIndex = 999;
 
-        demod_div.onmouseover = function() {
-            is_over = true;
-            updateDeModState();
-        };
-        demod_div.onmouseout = function() {
-            is_over = false;
-            updateDeModState();
-        };
-
         // Adding the actual DeMod button
         const demod_button = document.createElement('button');
         demod_button.style.color = 'white';
+        demod_button.style.height = '6px';
         demod_button.style.width = '124px';
         demod_button.style.border = 'none';
         demod_button.style.cursor = 'pointer';
@@ -63,14 +49,59 @@ var demod_init = async function() {
         demod_button.style.display = 'inline-block';
         demod_button.style.verticalAlign = 'top';
 
+        demod_div.appendChild(demod_button);
+
+        const demod_space = document.createElement('div');
+        demod_space.style.width = '4px';
+        demod_space.style.display = 'inline-block';
+        demod_space.style.verticalAlign = 'top';
+
+        demod_div.appendChild(demod_space);
+
+        // Adding the last message status indicator
+        const demod_status = document.createElement('div');
+        demod_status.style.color = 'white';
+        demod_status.style.height = '6px';
+        demod_status.style.border = '0px';
+        demod_status.style.padding = '0px';
+        demod_status.style.width = '124px';
+        demod_status.style.fontSize = '0px';
+        demod_status.style.border = 'none';
+        demod_status.style.outline = 'none';
+        demod_status.style.display = 'inline-block';
+        demod_status.style.verticalAlign = 'top';
+        demod_status.style.textAlign = 'center';
+        demod_status.style.backgroundColor ='#9A9A9A';
+        demod_status.textContent = "Latest: None";
+
+        demod_div.appendChild(demod_status);
+
+        demod_div.onmouseover = function() {
+            is_over = true;
+            demod_status.style.fontSize = '10px';
+            demod_status.style.height = '32px';
+            demod_status.style.padding = '7px 3px';
+            updateDeModState();
+        };
+        demod_div.onmouseout = function() {
+            is_over = false;
+            demod_status.style.fontSize = '0px';
+            demod_status.style.height = '6px';
+            demod_status.style.padding = '0px';
+            updateDeModState();
+        };
+
         demod_button.addEventListener('click', () => {
             is_on = !is_on;
             setDeModState(is_on);
             updateDeModState();
         });
 
-        demod_div.appendChild(demod_button);
-        updateDeModState();
+        const ButtonState = {
+            DISABLED : 0,
+            OFF : 1,
+            ON : 2,
+        };
 
         function updateDeModState() {
             if( is_on ) {
@@ -78,6 +109,38 @@ var demod_init = async function() {
             }
             else {
                 updateButton(demod_button, ButtonState.OFF, "DeMod:");
+            }
+        }
+
+        const ModerationResult = {
+            UNKNOWN : 0,
+            SAFE : 1,
+            FLAGGED : 2,
+            BLOCKED : 3,
+        };
+
+        function updateDeModMessageState(mod_result) {
+            switch(mod_result) {
+                case ModerationResult.UNKNOWN:
+                    demod_status.style.border = '0px';
+                    demod_status.textContent = "Latest: None";
+                    demod_status.style.backgroundColor ='#9A9A9A';
+                    break;
+                case ModerationResult.SAFE:
+                    demod_status.style.border = '0px';
+                    demod_status.textContent = "Latest: Safe";
+                    demod_status.style.backgroundColor ='#4CAF50';
+                    break;
+                case ModerationResult.FLAGGED:
+                    demod_status.style.border = '1px dotted white';
+                    demod_status.textContent = "Latest: Flagged";
+                    demod_status.style.backgroundColor ='#ACA950';
+                    break;
+                case ModerationResult.BLOCKED:
+                    demod_status.style.border = '1px solid white';
+                    demod_status.textContent = "Latest: BLOCKED";
+                    demod_status.style.backgroundColor ='#AF4C50';
+                    break;
             }
         }
 
@@ -122,12 +185,13 @@ var demod_init = async function() {
                         break;
                     case ButtonState.ON:
                         button.style.border = '1px dotted white';
-                        button.style.padding = '3px 11px';
                         button.style.backgroundColor ='#4CAF50';
                         break;
                 }
             }
         }
+
+        updateDeModState();
 
         // Experimental substitution, might confuse moderation in some cases, but usually doesn't work.
         // Change to "true" if you want to test it for yourself.
@@ -257,6 +321,7 @@ var demod_init = async function() {
                         var reader = original_result.body.getReader();
                         var payload = null;
                         var is_blocked = false;
+                        var mod_result = ModerationResult.SAFE;
 
                         const stream = new ReadableStream({
                             async start(controller) {
@@ -272,19 +337,7 @@ var demod_init = async function() {
                                             if( chunk_end == -1 ) chunk_end = chunk.length-1;
                                             var chunk_text = chunk.substring(chunk_start+5, chunk_end).trim();
 
-                                            if( payload === null ) {
-                                                try {
-                                                    payload = JSON.parse( chunk_text );
-                                                    if( !payload.hasOwnProperty('message') || !payload.message.hasOwnProperty('content') || !payload.message.content.hasOwnProperty('parts') ) {
-                                                        payload = null;
-                                                    }
-                                                }
-                                                catch(e) {
-                                                    payload = null;
-                                                }
-                                            }
-
-                                            if( chunk_text.trim() == "[DONE]" ) {
+                                            if( chunk_text == "[DONE]" ) {
                                                 is_done = true;
                                                 if( is_blocked && payload !== null ) {
                                                     var is_redownloaded = false;
@@ -323,8 +376,23 @@ var demod_init = async function() {
                                                     }
                                                 }
                                             }
+                                            else if( payload === null ) {
+                                                try {
+                                                    payload = JSON.parse( chunk_text );
+                                                    if( !payload.hasOwnProperty('message') ) {
+                                                        payload = null;
+                                                    }
+                                                    else {
+                                                        payload.message.content = {content_type: "text", "parts": [""]};
+                                                    }
+                                                }
+                                                catch(e) {
+                                                    payload = null;
+                                                }
+                                            }
 
                                             if( chunk_text.match(/\"flagged\": ?true/ig) ) {
+                                                if( mod_result !== ModerationResult.BLOCKED ) mod_result = ModerationResult.FLAGGED;
                                                 console.log("Message has been flagged. Preventing removal.");
                                             }
 
@@ -332,6 +400,7 @@ var demod_init = async function() {
                                             controller.enqueue( encoder.encode("data: "+chunk_cleaned+"\n\n") );
 
                                             if( chunk_text.match(/\"blocked\": ?true/ig) ) {
+                                                mod_result = ModerationResult.BLOCKED;
                                                 console.log("Message has been BLOCKED. Waiting for ChatGPT to finalize the request...");
                                                 is_blocked = true;
                                                 if( payload !== null ) {
@@ -339,6 +408,8 @@ var demod_init = async function() {
                                                     controller.enqueue( encoder.encode("data: "+JSON.stringify(payload)+"\n\n") );
                                                 }
                                             }
+
+                                            updateDeModMessageState(mod_result);
 
                                             chunk_start = chunk.indexOf("data: ", chunk_end+1);
                                         }
@@ -364,13 +435,19 @@ var demod_init = async function() {
                     case ConversationType.INIT: {
                         console.log("Processing conversation initialization. Checking if the conversation has existing moderation results.");
                         var convo_init = await original_result.json();
+
                         if( convo_init.hasOwnProperty('moderation_results') ) {
+                            var mod_entry;
                             var mod_key;
                             for( mod_key in convo_init.moderation_results ) {
-                                convo_init.moderation_results[mod_key].blocked = false;
-                                convo_init.moderation_results[mod_key].flagged = false;
+                                mod_entry = convo_init.moderation_results[mod_key];
+                                mod_entry.blocked = false;
+                                mod_entry.flagged = false;
                             }
                         }
+
+                        updateDeModMessageState(ModerationResult.UNKNOWN);
+
                         return new Response(JSON.stringify(convo_init), {
                             status: original_result.status,
                             statusText: original_result.statusText,
@@ -419,7 +496,7 @@ var demod_init = async function() {
         is_on = getDeModState();
         updateDeModState();
         document.body.appendChild(demod_div);
-        console.log("DeMod intercepter is ready.");
+        console.log("DeMod interceptor is ready.");
     }
 
     // The script's core logic is being injected into the page to work around different JavaScript contexts

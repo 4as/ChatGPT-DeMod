@@ -21,17 +21,16 @@ First of all you will have to install [Tampermonkey](https://www.tampermonkey.ne
 Make sure the script is enabled by navigating the **Installed Userscripts** tab.
 
 # Usage
-Once activated the script adds a floating button to the ChatGPT's conversation page.
-The button starts partly hidden and only a small stripe of pixels will be visible at the top of the page.  
+Once activated the script adds a small UI panel to the ChatGPT's conversation page.
+The panel starts partly hidden and only a small stripe of pixels will be visible at the top of the page.  
 ![Progress results](res/demod-hidden.png)  
-(The button will be green and dotted with white line if in **On** state)  
-If you move your mouse close to it the button will reveal itself and become clickable. If you're on the mobile devices you can just tap somewhere close to it - the tappable area is significantly larger than just those few pixels initially visible.  
-**If you do not see the button then the script IS NOT WORKING.** Do not assume the script is working if you don't see the indicator.  
+If you move your mouse close to it, it will unfold into a full panel with the DeMod button and the moderation indicator. If you're on the mobile devices you can just tap somewhere close to the strips - the tappable area is significantly larger than just those few pixels initially visible.  
+**If you do not see the strips then the script IS NOT WORKING.** Do not assume the script is working if you don't see the DeMod UI.  
 ![Progress results](res/demod-shown.png)  
-The button will read either "DeMod: Off" or "DeMod: On." Clicking it switches between the two modes. While DeMod is **On** the script will intercept conversation/moderation calls and modify each response so it won't contain any information about your message being flagged.  
-
-**Remember, even though it might seem like your messages are no longer being moderated, they still are! Each and every message goes through OpenAI's moderation and there is no way to prevent that.**
-
+    
+The panel consists of two elements:  
+* DeMod button - will read either "DeMod: Off" or "DeMod: On." Clicking it switches between the two modes. While DeMod is **On** the script will intercept conversation/moderation calls and modify each response so it won't contain any information about your message being flagged. The button will be green and dotted with white line if in **On** state.  
+* Moderation indicator - will be in one of four stats: None, Safe, Flagged, Blocked. **None** = you are yet to send a message (grey). **Safe** = your last message went through the moderation without issues (green). **Flagged** = your last message was flagged (yellow). **Blocked** = your last message was blocked (red).
 
 # Knows issues
 Bromite browser is not supported. Since the May 24th update OpenAI is now using a stricter Content Policy checks on injected scripts and Bromite doesn't offer a way to circumvent that.
