@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      3.3
+// @version      3.4
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -271,7 +271,7 @@ var demod_init = async function() {
                     }
                 }
 
-                if( conv_request !== null ) {
+                if( conv_request ) {
                     convo_type = ConversationType.PROMPT;
                     var conv_body = JSON.parse( conv_request );
 
@@ -434,21 +434,13 @@ var demod_init = async function() {
                     }
                     case ConversationType.INIT: {
                         console.log("Processing conversation initialization. Checking if the conversation has existing moderation results.");
-                        var convo_init = await original_result.json();
 
-                        if( convo_init.hasOwnProperty('moderation_results') ) {
-                            var mod_entry;
-                            var mod_key;
-                            for( mod_key in convo_init.moderation_results ) {
-                                mod_entry = convo_init.moderation_results[mod_key];
-                                mod_entry.blocked = false;
-                                mod_entry.flagged = false;
-                            }
-                        }
+                        var convo_init = await original_result.text();
+                        convo_init = clearFlagging(convo_init);
 
                         updateDeModMessageState(ModerationResult.UNKNOWN);
 
-                        return new Response(JSON.stringify(convo_init), {
+                        return new Response(convo_init, {
                             status: original_result.status,
                             statusText: original_result.statusText,
                             headers: original_result.headers,
