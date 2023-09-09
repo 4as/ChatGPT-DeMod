@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      3.4
+// @version      3.5
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -245,6 +245,7 @@ var demod_init = async function() {
                 return original_fetch(...arg);
             }
 
+            var original_arg = arg;
             var fetch_url = arg[0];
             var is_request = false;
             if( typeof(fetch_url) !== 'string' ) {
@@ -259,6 +260,20 @@ var demod_init = async function() {
             var is_conversation = fetch_url.indexOf('/conversation') != -1 && fetch_url.indexOf('/conversations') == -1;
             var convo_type = ConversationType.UNKNOWN;
             if( is_conversation ) {
+                if( fetch_url.indexOf("/gen_title") != -1 ) {
+                    var init_url = fetch_url.replace("/gen_title", "");
+                    if( is_request ) {
+                        arg = cloneRequest(arg[0], init_url, "GET", null);
+                        arg.headers.delete("Content-Type");
+                    }
+                    else {
+                        arg[0] = init_url;
+                        arg[1].method = "GET";
+                        delete arg[1].headers["Content-Type"];
+                        delete arg[1].body;
+                    }
+                }
+
                 var conv_request = null;
                 if( is_request ) {
                     if( arg[0] !== undefined && arg[0].hasOwnProperty('text') && (typeof arg[0].text === 'function') ) {
@@ -292,7 +307,7 @@ var demod_init = async function() {
                     }
 
                     if( is_request ) {
-                        arg[0] = cloneRequest(arg[0], fetch_url, conv_body);
+                        arg[0] = cloneRequest(arg[0], fetch_url, arg[0].method, conv_body);
                     }
                     else {
                         arg[1].body = JSON.stringify(conv_body);
@@ -304,7 +319,7 @@ var demod_init = async function() {
                 }
             }
 
-            var original_promise = original_fetch(...arg);
+            var original_promise = original_fetch(...original_arg);
             if( is_conversation ) {
                 var original_result = await original_promise;
 
@@ -415,6 +430,7 @@ var demod_init = async function() {
                                         }
 
                                         if( is_done || done ) {
+
                                             controller.close();
                                             break;
                                         }
@@ -470,9 +486,9 @@ var demod_init = async function() {
             target_window.localStorage.setItem(DEMOD_KEY, demod_on);
         }
 
-        function cloneRequest(request, fetch_url, body) {
+        function cloneRequest(request, fetch_url, method, body) {
             return new Request(fetch_url, {
-                method: request.method,
+                method: method,
                 headers: request.headers,
                 body: JSON.stringify(body),
                 referrer: request.referrer,
