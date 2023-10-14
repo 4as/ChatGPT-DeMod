@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      3.5
+// @version      3.6
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -267,6 +267,7 @@ var demod_init = async function() {
                         arg.headers.delete("Content-Type");
                     }
                     else {
+                        arg = JSON.parse(JSON.stringify(arg));
                         arg[0] = init_url;
                         arg[1].method = "GET";
                         delete arg[1].headers["Content-Type"];
