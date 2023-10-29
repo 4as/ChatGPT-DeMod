@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      3.7
+// @version      3.8
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -358,12 +358,13 @@ var demod_init = async function() {
                                 var chunk_buffer = {};
                                 var timestamp = Date.now();
                                 var time_delay = 2000; // delay starts large as to not fill the controller too early
+                                var conversation_id = null;
 
                                 function flushBuffer() {
-                                    let date = new Date();
                                     for(var key in chunk_buffer) {
                                         let data = chunk_buffer[key];
                                         controller.enqueue( encoder.encode("data: "+data+"\n\n") );
+                                        delete chunk_buffer[key];
                                     }
                                 }
 
@@ -381,7 +382,7 @@ var demod_init = async function() {
                                         if( chunk_text == "[DONE]" ) {
                                             is_done = true;
                                             flushBuffer();
-                                            if( is_blocked && payload !== null ) {
+                                            if( is_blocked ) {
                                                 var is_redownloaded = false;
                                                 var init_redownload = original_fetch(...init_cache);
                                                 var redownload_result = await init_redownload;
@@ -404,7 +405,7 @@ var demod_init = async function() {
                                                         }
 
                                                         if( latest !== null ) {
-                                                            payload.message.content.parts = latest.content.parts;
+                                                            payload.message = latest;
                                                             var inject_redownload = "data: "+JSON.stringify(payload)+"\n\n";
                                                             controller.enqueue( encoder.encode(inject_redownload) );
                                                             is_redownloaded = true;
@@ -417,64 +418,69 @@ var demod_init = async function() {
                                                     controller.enqueue( encoder.encode("data: "+JSON.stringify(payload)+"\n\n") );
                                                 }
                                             }
-                                        }
-
-                                        let flag_idx = chunk_text.indexOf("\"flagged\": ");
-                                        let block_idx = chunk_text.indexOf("\"blocked\": ");
-                                        if( flag_idx != -1 || block_idx != -1 ) {
-                                            var has_flag = chunk_text.match(/\"flagged\": ?true/ig);
-                                            var has_block = chunk_text.match(/\"blocked\": ?true/ig);
-                                            if( has_flag || has_block ) {
-                                                if( has_flag ) {
-                                                    if( mod_result !== ModerationResult.BLOCKED ) mod_result = ModerationResult.FLAGGED;
-                                                    console.log("Message has been flagged. Preventing removal.");
-                                                }
-                                                console.log("Received chunk contains flagging/blocking properties, clearing");
-                                                let clear_chunk = clearFlagging(chunk_text);
-                                                controller.enqueue( encoder.encode("data: "+clear_chunk+"\n\n") );
-                                            }
-
-                                            if( has_block ) {
-                                                mod_result = ModerationResult.BLOCKED;
-                                                console.log("Message has been BLOCKED. Waiting for ChatGPT to finalize the request...");
-                                                is_blocked = true;
-                                                if( payload !== null ) {
-                                                    payload.message.content.parts[0] = "DeMod: Moderation has intercepted the response and is activily blocking it. Waiting for ChatGPT to finalize the request so DeMod can fetch it from the conversation's history...";
-                                                    controller.enqueue( encoder.encode("data: "+JSON.stringify(payload)+"\n\n") );
-                                                }
-                                            }
+                                            controller.enqueue( encoder.encode("data: "+chunk_text+"\n\n") );
                                         }
                                         else {
-                                            if( has_redraw ) {
-                                                has_redraw = false;
-                                                let current_time = Date.now();
-                                                if( (current_time-timestamp) > time_delay ) {
-                                                    timestamp = current_time;
-                                                    time_delay = 1000;
-                                                    flushBuffer();
-                                                }
-                                            }
-
                                             var chunk_data = null;
                                             try {
                                                 chunk_data = JSON.parse(chunk_text);
+                                                if( chunk_data.hasOwnProperty('conversation_id')) conversation_id = chunk_data.conversation_id;
+                                                if( payload === null ) {
+                                                    payload = {"conversation_id":conversation_id, "message":null};
+                                                }
+                                                if( (payload.message == null && chunk_data.hasOwnProperty('message'))
+                                                   || (payload.message.create_date === null && chunk_data.message.create_date !== null) ) {
+                                                    payload = JSON.parse(chunk_text); // parse again to make a copy
+                                                    payload.message.content = {content_type: "text", "parts": [""]};
+                                                }
                                             }
                                             catch(e) { }
 
-                                            if( chunk_data === null || !chunk_data.hasOwnProperty('message') ) {
-                                                controller.enqueue( encoder.encode("data: "+chunk_text+"\n\n") );
+                                            if( chunk_data !== null && chunk_data.hasOwnProperty('moderation_response') ) {
+                                                var has_flag = chunk_data.moderation_response.flagged === true;
+                                                var has_block = chunk_data.moderation_response.blocked === true;
+                                                if( has_flag || has_block ) {
+                                                    if( has_flag ) {
+                                                        if( mod_result !== ModerationResult.BLOCKED ) mod_result = ModerationResult.FLAGGED;
+                                                        console.log("Message has been flagged. Preventing removal.");
+                                                    }
+                                                    console.log("Received chunk contains flagging/blocking properties, clearing");
+                                                    chunk_data.moderation_response.flagged = false;
+                                                    chunk_data.moderation_response.blocked = false;
+                                                }
+
+                                                controller.enqueue( encoder.encode("data: "+JSON.stringify(chunk_data)+"\n\n") );
+
+                                                if( has_block ) {
+                                                    mod_result = ModerationResult.BLOCKED;
+                                                    console.log("Message has been BLOCKED. Waiting for ChatGPT to finalize the request...");
+                                                    is_blocked = true;
+                                                    if( payload !== null ) {
+                                                        payload.message.author.role = "assistant";
+                                                        payload.message.weight = 1;
+                                                        payload.message.content.parts[0] = "DeMod: Moderation has intercepted the response and is activily blocking it. Waiting for ChatGPT to finalize the request so DeMod can fetch it from the conversation's history...";
+                                                        controller.enqueue( encoder.encode("data: "+JSON.stringify(payload)+"\n\n") );
+                                                    }
+                                                }
                                             }
                                             else {
-                                                if( payload === null ) {
-                                                      payload = JSON.parse(chunk_text); // parse again to make a copy
-                                                      payload.message.content = {content_type: "text", "parts": [""]};
+                                                if( has_redraw ) {
+                                                    has_redraw = false;
+                                                    let current_time = Date.now();
+                                                    if( (current_time-timestamp) > time_delay ) {
+                                                        timestamp = current_time;
+                                                        time_delay = 1000;
+                                                        flushBuffer();
+                                                    }
                                                 }
-                                                chunk_buffer[chunk_data.message.id] = chunk_text;
-                                            }
-                                        }
 
-                                        if( is_done ) {
-                                            flushBuffer();
+                                                if( chunk_data === null || !chunk_data.hasOwnProperty('message') ) {
+                                                    controller.enqueue( encoder.encode("data: "+chunk_text+"\n\n") );
+                                                }
+                                                else {
+                                                    chunk_buffer[chunk_data.message.id] = chunk_text;
+                                                }
+                                            }
                                         }
 
                                         updateDeModMessageState(mod_result);
