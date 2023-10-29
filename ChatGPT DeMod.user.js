@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      3.6
+// @version      3.7
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -230,15 +230,27 @@ var demod_init = async function() {
             PROMPT : 2,
         };
 
-        var init_cache = null;
-        var current_message = null;
-        var used_opening = Math.random() > 0.5;
-        var currently_responding = false;
-        var intercept_count_normal = 0;
-        var intercept_count_extended = 0;
-        var intercept_count_total = 0;
-
         var target_window = typeof(unsafeWindow)==='undefined' ? window : unsafeWindow;
+
+        // EXPERIMENTAL
+        // Redraw tests are used to detect updates in the browser's window. When conversation is lagging those updates will not be present.
+        // If lag is detected DeMod will throttle text streaming so the browser has time to catch up.
+        var redraw_test = 0;
+        var has_redraw = false;
+        function testRedraw(timestamp) {
+            has_redraw = true;
+            redraw_test = target_window.requestAnimationFrame(testRedraw);
+        }
+        function stopRedrawTests() {
+            target_window.cancelAnimationFrame(redraw_test);
+            redraw_test = 0;
+        }
+        function startRedrawTests() {
+            if( redraw_test !== 0 ) stopRedrawTests();
+            redraw_test = target_window.requestAnimationFrame(testRedraw);
+        }
+
+        var init_cache = null;
         var original_fetch = target_window.fetch;
         target_window.fetch = async function(...arg) {
             if( !is_on ) {
@@ -330,92 +342,99 @@ var demod_init = async function() {
 
                 switch(convo_type) {
                     case ConversationType.PROMPT: {
-                        console.log("Processing basic prompted conversation. Scanning for moderation results...");
-                        var is_done = false;
-                        var encoder = new TextEncoder();
-                        var decoder = new TextDecoder();
-                        var reader = original_result.body.getReader();
-                        var payload = null;
-                        var is_blocked = false;
-                        var mod_result = ModerationResult.SAFE;
 
+                        startRedrawTests();
+
+                        console.log("Processing basic prompted conversation. Scanning for moderation results...");
                         const stream = new ReadableStream({
                             async start(controller) {
-                                try {
-                                    while (true) {
-                                        const { done, value } = await reader.read();
+                                var is_done = false;
+                                var encoder = new TextEncoder();
+                                var decoder = new TextDecoder();
+                                var reader = original_result.body.getReader();
+                                var payload = null;
+                                var is_blocked = false;
+                                var mod_result = ModerationResult.SAFE;
+                                var chunk_buffer = {};
+                                var timestamp = Date.now();
+                                var time_delay = 2000; // delay starts large as to not fill the controller too early
 
-                                        var raw_chunk = value || new Uint8Array;
-                                        var chunk = raw_chunk ? decoder.decode(raw_chunk, {stream: !original_result.done}) : "";
-                                        var chunk_start = chunk.indexOf("data: ");
-                                        while( chunk_start != -1 && !is_done) {
-                                            var chunk_end = chunk.indexOf("\n", chunk_start);
-                                            if( chunk_end == -1 ) chunk_end = chunk.length-1;
-                                            var chunk_text = chunk.substring(chunk_start+5, chunk_end).trim();
+                                function flushBuffer() {
+                                    let date = new Date();
+                                    for(var key in chunk_buffer) {
+                                        let data = chunk_buffer[key];
+                                        controller.enqueue( encoder.encode("data: "+data+"\n\n") );
+                                    }
+                                }
 
-                                            if( chunk_text == "[DONE]" ) {
-                                                is_done = true;
-                                                if( is_blocked && payload !== null ) {
-                                                    var is_redownloaded = false;
-                                                    var init_redownload = original_fetch(...init_cache);
-                                                    var redownload_result = await init_redownload;
-                                                    if( redownload_result.ok ) {
-                                                        var redownload_text = await redownload_result.text();
-                                                        var redownload_object = null;
-                                                        try {
-                                                            redownload_object = JSON.parse(redownload_text);
-                                                        }
-                                                        catch(e) { }
-                                                        if( redownload_object !== null && redownload_object.hasOwnProperty('mapping') ) {
-                                                            var latest = null;
-                                                            var latest_time = 0;
-                                                            for( var map_key in redownload_object.mapping ) {
-                                                                var map_obj = redownload_object.mapping[map_key];
-                                                                if( map_obj.hasOwnProperty('message') && map_obj.message.create_time > latest_time ) {
-                                                                    latest = map_obj.message;
-                                                                    latest_time = latest.create_time;
-                                                                }
+                                while (true) {
+                                    const { done, value } = await reader.read();
+
+                                    var raw_chunk = value || new Uint8Array;
+                                    var chunk = decoder.decode(raw_chunk);
+                                    var chunk_start = chunk.indexOf("data: ");
+                                    while( chunk_start != -1 && !is_done) {
+                                        var chunk_end = chunk.indexOf("\n", chunk_start);
+                                        if( chunk_end == -1 ) chunk_end = chunk.length-1;
+                                        var chunk_text = chunk.substring(chunk_start+5, chunk_end).trim();
+
+                                        if( chunk_text == "[DONE]" ) {
+                                            is_done = true;
+                                            flushBuffer();
+                                            if( is_blocked && payload !== null ) {
+                                                var is_redownloaded = false;
+                                                var init_redownload = original_fetch(...init_cache);
+                                                var redownload_result = await init_redownload;
+                                                if( redownload_result.ok ) {
+                                                    var redownload_text = await redownload_result.text();
+                                                    var redownload_object = null;
+                                                    try {
+                                                        redownload_object = JSON.parse(redownload_text);
+                                                    }
+                                                    catch(e) { }
+                                                    if( redownload_object !== null && redownload_object.hasOwnProperty('mapping') ) {
+                                                        var latest = null;
+                                                        var latest_time = 0;
+                                                        for( var map_key in redownload_object.mapping ) {
+                                                            var map_obj = redownload_object.mapping[map_key];
+                                                            if( map_obj.hasOwnProperty('message') && map_obj.message.create_time > latest_time ) {
+                                                                latest = map_obj.message;
+                                                                latest_time = latest.create_time;
                                                             }
+                                                        }
 
-                                                            if( latest !== null ) {
-                                                                payload.message.content.parts = latest.content.parts;
-                                                                var inject_redownload = "data: "+JSON.stringify(payload)+"\n\n";
-                                                                controller.enqueue( encoder.encode(inject_redownload) );
-                                                                is_redownloaded = true;
-                                                            }
+                                                        if( latest !== null ) {
+                                                            payload.message.content.parts = latest.content.parts;
+                                                            var inject_redownload = "data: "+JSON.stringify(payload)+"\n\n";
+                                                            controller.enqueue( encoder.encode(inject_redownload) );
+                                                            is_redownloaded = true;
                                                         }
                                                     }
+                                                }
 
-                                                    if( !is_redownloaded ) {
-                                                        payload.message.content.parts[0] = "DeMod: Request completed, but DeMod failed to access the history. Try refreshing the conversation instead.";
-                                                        controller.enqueue( encoder.encode("data: "+JSON.stringify(payload)+"\n\n") );
-                                                    }
+                                                if( !is_redownloaded ) {
+                                                    payload.message.content.parts[0] = "DeMod: Request completed, but DeMod failed to access the history. Try refreshing the conversation instead.";
+                                                    controller.enqueue( encoder.encode("data: "+JSON.stringify(payload)+"\n\n") );
                                                 }
                                             }
-                                            else if( payload === null ) {
-                                                try {
-                                                    payload = JSON.parse( chunk_text );
-                                                    if( !payload.hasOwnProperty('message') ) {
-                                                        payload = null;
-                                                    }
-                                                    else {
-                                                        payload.message.content = {content_type: "text", "parts": [""]};
-                                                    }
+                                        }
+
+                                        let flag_idx = chunk_text.indexOf("\"flagged\": ");
+                                        let block_idx = chunk_text.indexOf("\"blocked\": ");
+                                        if( flag_idx != -1 || block_idx != -1 ) {
+                                            var has_flag = chunk_text.match(/\"flagged\": ?true/ig);
+                                            var has_block = chunk_text.match(/\"blocked\": ?true/ig);
+                                            if( has_flag || has_block ) {
+                                                if( has_flag ) {
+                                                    if( mod_result !== ModerationResult.BLOCKED ) mod_result = ModerationResult.FLAGGED;
+                                                    console.log("Message has been flagged. Preventing removal.");
                                                 }
-                                                catch(e) {
-                                                    payload = null;
-                                                }
+                                                console.log("Received chunk contains flagging/blocking properties, clearing");
+                                                let clear_chunk = clearFlagging(chunk_text);
+                                                controller.enqueue( encoder.encode("data: "+clear_chunk+"\n\n") );
                                             }
 
-                                            if( chunk_text.match(/\"flagged\": ?true/ig) ) {
-                                                if( mod_result !== ModerationResult.BLOCKED ) mod_result = ModerationResult.FLAGGED;
-                                                console.log("Message has been flagged. Preventing removal.");
-                                            }
-
-                                            var chunk_cleaned = clearFlagging(chunk_text);
-                                            controller.enqueue( encoder.encode("data: "+chunk_cleaned+"\n\n") );
-
-                                            if( chunk_text.match(/\"blocked\": ?true/ig) ) {
+                                            if( has_block ) {
                                                 mod_result = ModerationResult.BLOCKED;
                                                 console.log("Message has been BLOCKED. Waiting for ChatGPT to finalize the request...");
                                                 is_blocked = true;
@@ -424,20 +443,50 @@ var demod_init = async function() {
                                                     controller.enqueue( encoder.encode("data: "+JSON.stringify(payload)+"\n\n") );
                                                 }
                                             }
+                                        }
+                                        else {
+                                            if( has_redraw ) {
+                                                has_redraw = false;
+                                                let current_time = Date.now();
+                                                if( (current_time-timestamp) > time_delay ) {
+                                                    timestamp = current_time;
+                                                    time_delay = 1000;
+                                                    flushBuffer();
+                                                }
+                                            }
 
-                                            updateDeModMessageState(mod_result);
+                                            var chunk_data = null;
+                                            try {
+                                                chunk_data = JSON.parse(chunk_text);
+                                            }
+                                            catch(e) { }
 
-                                            chunk_start = chunk.indexOf("data: ", chunk_end+1);
+                                            if( chunk_data === null || !chunk_data.hasOwnProperty('message') ) {
+                                                controller.enqueue( encoder.encode("data: "+chunk_text+"\n\n") );
+                                            }
+                                            else {
+                                                if( payload === null ) {
+                                                      payload = JSON.parse(chunk_text); // parse again to make a copy
+                                                      payload.message.content = {content_type: "text", "parts": [""]};
+                                                }
+                                                chunk_buffer[chunk_data.message.id] = chunk_text;
+                                            }
                                         }
 
-                                        if( is_done || done ) {
-
-                                            controller.close();
-                                            break;
+                                        if( is_done ) {
+                                            flushBuffer();
                                         }
+
+                                        updateDeModMessageState(mod_result);
+
+                                        chunk_start = chunk.indexOf("data: ", chunk_end+1);
                                     }
-                                } catch (error) {
-                                    controller.error(error);
+
+                                    if( is_done || done ) {
+                                        stopRedrawTests();
+                                        controller.close();
+                                        break;
+                                    }
                                 }
                             },
                         });
@@ -502,9 +551,9 @@ var demod_init = async function() {
             });
         }
 
+        document.body.appendChild(demod_div);
         is_on = getDeModState();
         updateDeModState();
-        document.body.appendChild(demod_div);
         console.log("DeMod interceptor is ready.");
     }
 
