@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      3.8
+// @version      3.9
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -269,7 +269,7 @@ var demod_init = async function() {
                 return new Response("", { status: 404, statusText: "Not found" } );
             }
 
-            var is_conversation = fetch_url.indexOf('/conversation') != -1 && fetch_url.indexOf('/conversations') == -1;
+            var is_conversation = fetch_url.indexOf('/complete')!=-1 || (fetch_url.indexOf('/conversation') != -1 && fetch_url.indexOf('/conversations') == -1);
             var convo_type = ConversationType.UNKNOWN;
             if( is_conversation ) {
                 if( fetch_url.indexOf("/gen_title") != -1 ) {
@@ -474,7 +474,7 @@ var demod_init = async function() {
                                                     }
                                                 }
 
-                                                if( chunk_data === null || !chunk_data.hasOwnProperty('message') ) {
+                                                if( chunk_data === null || !chunk_data.hasOwnProperty('message') || chunk_data.message === null ) {
                                                     controller.enqueue( encoder.encode("data: "+chunk_text+"\n\n") );
                                                 }
                                                 else {
