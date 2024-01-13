@@ -374,6 +374,13 @@ var demod_init = async function() {
                                     var raw_chunk = value || new Uint8Array;
                                     var chunk = decoder.decode(raw_chunk);
                                     var chunk_start = chunk.indexOf("data: ");
+                                    if( chunk_start === -1) {
+                                        controller.enqueue(raw_chunk)
+                                        stopRedrawTests();
+                                        controller.close();
+                                        break;
+                                    }
+
                                     while( chunk_start != -1 && !is_done) {
                                         var chunk_end = chunk.indexOf("\n", chunk_start);
                                         if( chunk_end == -1 ) chunk_end = chunk.length-1;
@@ -557,9 +564,48 @@ var demod_init = async function() {
             });
         }
 
+        function webSocketMessageHandler(rawMessage) {
+            try {
+                const message = JSON.parse(rawMessage)
+                const body = atob(message.data?.body)
+                const modifiedBody = body.replaceAll("\"blocked\": true", "\"blocked\": false")
+                message.data.body = btoa(modifiedBody)
+                return JSON.stringify(message)
+            } catch (e) {
+                console.error(e)
+                // pass
+            }
+            return rawMessage
+        }
+
+        function interceptWebSocket() {
+            try {
+                let property = Object.getOwnPropertyDescriptor(MessageEvent.prototype, "data");
+                const rawGetter = property.get;
+
+                // wrapper that replaces getter
+                function newGetter() {
+                    let isWebSocket = this.currentTarget instanceof WebSocket;
+                    let msg = rawGetter.call(this);
+
+                    if (!isWebSocket) {
+                        return msg;
+                    }
+
+                    return webSocketMessageHandler(msg);
+                }
+
+                property.get = newGetter;
+                Object.defineProperty(MessageEvent.prototype, "data", property);
+            } catch (e) {
+                console.warn('Unable to intercept WebSocket')
+            }
+        }
+
         document.body.appendChild(demod_div);
         is_on = getDeModState();
         updateDeModState();
+        interceptWebSocket();
         console.log("DeMod interceptor is ready.");
     }
 
