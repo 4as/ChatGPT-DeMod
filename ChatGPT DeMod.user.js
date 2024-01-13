@@ -568,7 +568,7 @@ var demod_init = async function() {
             try {
                 const message = JSON.parse(rawMessage)
                 const body = atob(message.data?.body)
-                const modifiedBody = body.replaceAll("\"blocked\": true", "\"blocked\": false")
+                const modifiedBody = body.replaceAll("\"blocked\": true", "\"blocked\": false").replaceAll("\"flagged\": true", "\"flagged\": false")
                 message.data.body = btoa(modifiedBody)
                 return JSON.stringify(message)
             } catch (e) {
