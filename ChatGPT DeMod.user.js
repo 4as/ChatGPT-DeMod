@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      3.9
+// @version      3.10
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -398,7 +398,8 @@ var demod_init = async function() {
                                                         var latest_time = 0;
                                                         for( var map_key in redownload_object.mapping ) {
                                                             var map_obj = redownload_object.mapping[map_key];
-                                                            if( map_obj.hasOwnProperty('message') && map_obj.message.create_time > latest_time ) {
+                                                            if( map_obj.hasOwnProperty('message') && map_obj.message != null
+                                                               && map_obj.message.hasOwnProperty('create_time') && map_obj.message.create_time > latest_time ) {
                                                                 latest = map_obj.message;
                                                                 latest_time = latest.create_time;
                                                             }
