@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      4.0
+// @version      4.1
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chat.openai.com/*
@@ -193,27 +193,6 @@ var demod_init = async function() {
 
         updateDeModState();
 
-        // Experimental substitution, might confuse moderation in some cases, but usually doesn't work.
-        // Change to "true" if you want to test it for yourself.
-        const USE_SUBSTITUTION = false;
-        const SUBSITUTE_BACKWARDS = false; //enable backwards in case you're actually using Cyrillic to communicate with ChatGPT and you want to substitute to English
-        const glyph_english = ['A', 'B', 'C', 'E', 'H', 'I', 'J', 'K', 'M', 'O', 'P', 'S', 'T', 'X', 'Y', 'a', 'c', 'e', 'o', 'p', 'x', 'y', ' '];
-        const glyph_cyrillic = ['А', 'В', 'С', 'Е', 'Н', 'І', 'Ј', 'К', 'М', 'О', 'Р', 'Ѕ', 'Т', 'Х', 'Ү', 'а', 'с', 'е', 'о', 'р', 'х', 'у', ' '];
-        function substituteGlyps(text, is_backwards) {
-            var idx = 0;
-            if( !is_backwards ) {
-                for(idx in glyph_english) {
-                    text = text.replaceAll(glyph_english[idx], glyph_cyrillic[idx]);
-                }
-            }
-            else {
-                for(idx in glyph_cyrillic) {
-                    text = text.replaceAll(glyph_cyrillic[idx], glyph_english[idx]);
-                }
-            }
-            return text;
-        }
-
         function hasFlagging(text) {
             return text.match(/(\"flagged\"|\"blocked\"): ?true/ig);
         }
@@ -265,6 +244,8 @@ var demod_init = async function() {
         var init_cache = null;
         var original_fetch = target_window.fetch;
         var is_blocked = false;
+        var payload = null;
+        var last_response = null;
         var mod_result = ModerationResult.UNKNOWN;
 
         var decoder = new TextDecoder();
@@ -338,6 +319,7 @@ var demod_init = async function() {
             conversation_id;
             is_done = false;
             is_blocked = false;
+            has_content = false;
             handle_latest = false;
             mod_result = ModerationResult.SAFE;
             queue = [];
@@ -391,13 +373,14 @@ var demod_init = async function() {
                         }
                         catch(e) { }
 
+                        this.has_content = chunk_data !== null && chunk_data.hasOwnProperty('message') && chunk_data.message.hasOwnProperty('content');
+
                         if( chunk_data !== null && chunk_data.hasOwnProperty('moderation_response') ) {
                             var has_flag = chunk_data.moderation_response.flagged === true;
                             var has_block = chunk_data.moderation_response.blocked === true;
                             if( has_flag || has_block ) {
                                 if( has_flag ) {
                                     if( this.mod_result !== ModerationResult.BLOCKED ) this.mod_result = ModerationResult.FLAGGED;
-                                    console.log("Message has been flagged. Preventing removal.");
                                 }
                                 console.log("Received chunk contains flagging/blocking properties, clearing");
                                 chunk_data.moderation_response.flagged = false;
@@ -410,7 +393,7 @@ var demod_init = async function() {
                                 console.log("Message has been BLOCKED. Waiting for ChatGPT to finalize the request...");
                                 this.mod_result = ModerationResult.BLOCKED;
                                 this.is_blocked = true;
-                                if( this.payload !== null ) {
+                                if( this.payload !== null && this.payload.message !== null ) {
                                     this.payload.message.author.role = "assistant";
                                     this.payload.message.weight = 1;
                                     this.payload.message.content.parts[0] = "DeMod: Moderation has intercepted the response and is actively blocking it. Waiting for ChatGPT to finalize the request so DeMod can fetch it from the conversation's history...";
@@ -449,22 +432,25 @@ var demod_init = async function() {
             response_object;
             response_body;
             response = null;
+            payload = null;
             constructor(current_payload, event) {
                 this.event = event;
+                this.payload = current_payload;
                 this.response_data = decodeData(event.data);
                 if( this.response_data != null ) {
                     this.response_object = JSON.parse(this.response_data);
-                    if(this.response_object.type == "message" && this.response_object.dataType == "json") {
+                    if( this.has_body ) {
                         this.response_body = atob(this.response_object.data.body);
-                        this.response = new ChatResponse(current_payload, this.response_body, false);
+                        this.response = new ChatResponse(this.payload, this.response_body, false);
                     }
                 }
             }
 
             get is_valid() { return this.response != null; }
+            get has_body() { return this.response_object != null && this.response_object.type == "message" && this.response_object.dataType == "json" && this.response_object.data.body != null; }
+            get has_content() { return this.is_valid && this.has_body && this.response.has_content; }
             get is_blocked() { return this.response.is_blocked; }
             get is_done() { return this.response.is_done; }
-            get payload() { return this.response.payload; }
             get mod_result() { return this.response.mod_result; }
 
             async process(is_blocked) {
@@ -479,7 +465,9 @@ var demod_init = async function() {
             }
 
             replace(latest) {
-                if( this.response == null ) return;
+                if( this.response == null ) {
+                    this.response = new ChatResponse(this.payload, "", false);
+                }
                 var data = this.response.replace(latest);
                 this.setBody(data);
             }
@@ -546,20 +534,6 @@ var demod_init = async function() {
 
                     conv_body.supports_modapi = false;
 
-                    if( USE_SUBSTITUTION ) {
-                        if( conv_body.hasOwnProperty('messages') && conv_body.messages[0].hasOwnProperty('content') && conv_body.messages[0].content.hasOwnProperty('parts') ) {
-                            for(var msg_key in conv_body.messages) {
-                                for(var content_key in conv_body.messages[msg_key].content.parts) {
-                                    var jumble = conv_body.messages[msg_key].content.parts[content_key].split("<||>");
-                                    for (var i = 1; i < jumble.length; i+=2) {
-                                        jumble[i] = substituteGlyps(jumble[i], SUBSITUTE_BACKWARDS);
-                                    }
-                                    conv_body.messages[msg_key].content.parts[content_key] = jumble.join('');
-                                }
-                            }
-                        }
-                    }
-
                     if( is_request ) {
                         arg[0] = cloneRequest(arg[0], fetch_url, arg[0].method, conv_body);
                     }
@@ -584,6 +558,7 @@ var demod_init = async function() {
                 switch(convo_type) {
                     case ConversationType.PROMPT: {
 
+                        last_response = null;
                         is_blocked = false;
                         mod_result = ModerationResult.SAFE;
                         updateDeModMessageState(mod_result);
@@ -593,7 +568,6 @@ var demod_init = async function() {
                         const stream = new ReadableStream({
                             async start(controller) {
                                 var reader = original_result.body.getReader();
-                                var payload = null;
                                 var timestamp = Date.now();
                                 var time_delay = 2000; // delay starts large as to not fill the controller too early
 
@@ -674,17 +648,14 @@ var demod_init = async function() {
             return original_promise;
         }
 
-        // Intercepter for new WebSocket communication (credit to WebSocket Logger for making this possible)
+        // Interceptor for new WebSocket communication (credit to WebSocket Logger for making this possible)
         var original_websocket = target_window.WebSocket;
         target_window.WebSocket = new Proxy(original_websocket, {
             construct: function (target, args, newTarget) {
                 var ws = new target(...args);
                 console.log("WebSocket interceptor created, connecting to: " + args[0]);
 
-                var payload = null;
-                var response = null;
                 var buffer = [];
-                var sent_warning = false;
 
                 async function processMessage(original_onmessage, event) {
                     var response = new ChatEvent(payload, event);
@@ -700,31 +671,42 @@ var demod_init = async function() {
                         payload = response.payload;
 
                         if(blocked) {
-                            if( is_blocked !== blocked ) {
-                                //this is here to allowed the first blocked message to get through since it contains the DeMod warning
-                                //all proceeding messages will be held in a buffer and then modified with the finalized response
-                                original_onmessage(response.event);
-                                is_blocked = blocked;
-                            }
-                            else if( response.is_done ) {
-                                var latest = await redownloadLatest();
-                                for(const entry of buffer) {
-                                    if( entry.mod_result === ModerationResult.BLOCKED) {
-                                        entry.replace(latest);
-                                    }
-
-                                    original_onmessage(entry.event);
-                                }
-
-                                buffer.length = 0;
-                                original_onmessage(response.event);
+                           if( response.is_done ) {
+                               console.log("Response finalized.");
+                               if( last_response != null ) {
+                                   var latest = await redownloadLatest();
+                                   last_response.replace(latest);
+                                   buffer.push(last_response);
+                               }
+                               buffer.push(response);
                             }
                             else {
-                                buffer.push(response);
+                                if( blocked != is_blocked ) {
+                                    is_blocked = true;
+                                    last_response = response;
+                                }
+                                else if( response.has_body ) {
+                                    last_response = null;
+                                    buffer.push(response);
+                                }
+                                else {
+                                    buffer.push(response);
+                                }
                             }
                         }
                         else {
-                            original_onmessage(response.event);
+                            buffer.push(response);
+                        }
+
+                        var entry;
+                        try {
+                            for(entry of buffer) {
+                                original_onmessage(entry.event);
+                            }
+                            buffer.length = 0;
+                        }
+                        catch(e) {
+                            console.log("Failed to send parsed response: "+entry.response_data+"\n\nWith body: "+entry.response_body);
                         }
                     }
                     else {
