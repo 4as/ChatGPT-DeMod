@@ -4,7 +4,7 @@
 // @version      4.1
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
-// @match        *://chat.openai.com/*
+// @match        *://chatgpt.com/*
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
 // @downloadURL  https://raw.githubusercontent.com/4as/ChatGPT-DeMod/main/ChatGPT%20DeMod.user.js
 // @updateURL    https://raw.githubusercontent.com/4as/ChatGPT-DeMod/main/ChatGPT%20DeMod.user.js
