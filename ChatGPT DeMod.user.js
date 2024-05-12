@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      4.3
+// @version      4.4
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chatgpt.com/*
@@ -407,7 +407,7 @@ var demod_init = async function() {
                                 this.last_text = JSON.parse(JSON.stringify(chunk_data)); // cloning
                             }
                             else {
-                                this.queue.push("data: "+chunk_data+"\n\n");
+                                this.queue.push("data: "+JSON.stringify(chunk_data)+"\n\n");
                             }
                         }
                         else {
