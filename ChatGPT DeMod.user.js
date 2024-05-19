@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      4.4
+// @version      4.5
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chatgpt.com/*
@@ -194,13 +194,19 @@ var demod_init = async function() {
 
         updateDeModState();
 
-        function hasFlagging(text) {
-            return text.match(/(\"flagged\"|\"blocked\"): ?true/ig);
+        function hasFlagged(text) {
+            return text.match(/(\"blocked\"|\"flagged\"): ?true/ig);
+        }
+        function hasBlocked(text) {
+            return text.match(/(\"blocked\"): ?true/ig);
         }
 
         function clearFlagging(text) {
-            text = text.replaceAll(/\"flagged\": ?true/ig, "\"flagged\": false");
-            text = text.replaceAll(/\"blocked\": ?true/ig, "\"blocked\": false");
+            // repeated replacement to ensure the style stays consistant
+            text = text.replaceAll(/\"flagged\": true/ig, "\"flagged\": false");
+            text = text.replaceAll(/\"blocked\": true/ig, "\"blocked\": false");
+            text = text.replaceAll(/\"flagged\":true/ig, "\"flagged\":false");
+            text = text.replaceAll(/\"blocked\":true/ig, "\"blocked\":false");
             return text;
         }
 
@@ -223,25 +229,9 @@ var demod_init = async function() {
             target_window.localStorage.setItem(DEMOD_KEY, demod_on);
         }
 
-        // EXPERIMENTAL
-        // Redraw tests are used to detect updates in the browser's window. When conversation is lagging those updates will not be present.
-        // If lag is detected DeMod will throttle text streaming so the browser has time to catch up.
-        var redraw_test = 0;
-        var has_redraw = false;
-        function testRedraw(timestamp) {
-            has_redraw = true;
-            redraw_test = target_window.requestAnimationFrame(testRedraw);
-        }
-        function stopRedrawTests() {
-            target_window.cancelAnimationFrame(redraw_test);
-            redraw_test = 0;
-        }
-        function startRedrawTests() {
-            if( redraw_test !== 0 ) stopRedrawTests();
-            redraw_test = target_window.requestAnimationFrame(testRedraw);
-        }
 
         // Interceptors shared data
+        const DONE = "[DONE]";
         var init_cache = null;
         var original_fetch = target_window.fetch;
         var is_blocked = false;
@@ -323,7 +313,6 @@ var demod_init = async function() {
             has_content = false;
             handle_latest = false;
             mod_result = ModerationResult.SAFE;
-            last_text;
             queue = [];
             constructor(existing_payload, decoded_chunk, download_latest) {
                 this.payload = existing_payload;
@@ -339,83 +328,81 @@ var demod_init = async function() {
                     return;
                 }
 
-                while( this.chunk_start != -1 && !this.is_done ) {
-                    var chunk_end = this.chunk.indexOf("\n", this.chunk_start);
-                    if( chunk_end == -1 ) chunk_end = this.chunk.length-1;
-                    var chunk_text = this.chunk.substring(this.chunk_start+5, chunk_end).trim();
+                if( hasFlagged(this.chunk) || this.payload === null || this.payload.message === null || (this.is_blocked && this.chunk.indexOf(DONE) !== -1) ) {
+                    while( this.chunk_start != -1 && !this.is_done ) {
+                        var chunk_end = this.chunk.indexOf("\n", this.chunk_start);
+                        if( chunk_end == -1 ) chunk_end = this.chunk.length-1;
+                        var chunk_text = this.chunk.substring(this.chunk_start+5, chunk_end).trim();
 
-                    if( chunk_text == "[DONE]" ) {
-                        this.is_done = true;
-                        if( this.handle_latest && this.is_blocked) {
-                            var latest = await redownloadLatest();
-                            if( latest !== null ) {
-                                this.payload.message = latest;
-                                this.queue.push("data: "+JSON.stringify(this.payload)+"\n\n");
-                            }
-                            else {
-                                this.payload.message.content.parts[0] = "DeMod: Request completed, but DeMod failed to access the history. Try refreshing the conversation instead.";
-                                this.queue.push("data: "+JSON.stringify(this.payload)+"\n\n");
-                            }
-                        }
-                        this.queue.push("data: "+chunk_text+"\n\n");
-                    }
-                    else {
-                        var chunk_data = null;
-                        try {
-                            chunk_data = JSON.parse(chunk_text);
-                            if( chunk_data.hasOwnProperty('conversation_id')) this.conversation_id = chunk_data.conversation_id;
-                            if( this.payload === null ) {
-                                this.payload = {"conversation_id":this.conversation_id, "message":null};
-                            }
-                            if( (this.payload.message == null && chunk_data.hasOwnProperty('message'))
-                               || (this.payload.message.create_date === null && chunk_data.message.create_date !== null) ) {
-                                this.payload = JSON.parse(chunk_text); // parse again to make a copy
-                                this.payload.message.content = {content_type: "text", "parts": [""]};
-                            }
-                        }
-                        catch(e) { }
-
-                        this.has_content = chunk_data !== null && chunk_data.hasOwnProperty('message') && chunk_data.message.hasOwnProperty('content');
-
-                        if( chunk_data !== null ) {
-                            if( chunk_data.hasOwnProperty('moderation_response') ) {
-                                var has_flag = chunk_data.moderation_response.flagged === true;
-                                var has_block = chunk_data.moderation_response.blocked === true;
-                                if( has_flag || has_block ) {
-                                    if( has_flag ) {
-                                        if( this.mod_result !== ModerationResult.BLOCKED ) this.mod_result = ModerationResult.FLAGGED;
-                                    }
-                                    console.log("Received chunk contains flagging/blocking properties, clearing");
-                                    chunk_data.moderation_response.flagged = false;
-                                    chunk_data.moderation_response.blocked = false;
+                        if( chunk_text === DONE ) {
+                            this.is_done = true;
+                            if( this.handle_latest && this.is_blocked) {
+                                var latest = await redownloadLatest();
+                                if( latest !== null ) {
+                                    this.payload.message = latest;
+                                    this.queue.push("data: "+JSON.stringify(this.payload)+"\n\n");
                                 }
-
-                                if( has_block ) {
-                                    console.log("Message has been BLOCKED. Waiting for ChatGPT to finalize the request...");
-                                    this.mod_result = ModerationResult.BLOCKED;
-                                    this.is_blocked = true;
-                                    if( this.payload !== null && this.payload.message !== null ) {
-                                        this.payload.message.author.role = "assistant";
-                                        this.payload.message.weight = 1;
-                                        this.payload.message.content.parts[0] = "DeMod: Moderation has intercepted the response and is actively blocking it. Waiting for ChatGPT to finalize the request so DeMod can fetch it from the conversation's history...";
-                                        chunk_data = this.payload;
-                                    }
+                                else {
+                                    this.payload.message.content.parts[0] = "DeMod: Request completed, but DeMod failed to access the history. Try refreshing the conversation instead.";
+                                    this.queue.push("data: "+JSON.stringify(this.payload)+"\n\n");
                                 }
                             }
-
-                            if( this.has_content && chunk_data.message.content.hasOwnProperty('content_type') && chunk_data.message.content.content_type === 'text' && chunk_data.message.content.hasOwnProperty('parts') ) {
-                                this.last_text = JSON.parse(JSON.stringify(chunk_data)); // cloning
-                            }
-                            else {
-                                this.queue.push("data: "+JSON.stringify(chunk_data)+"\n\n");
-                            }
-                        }
-                        else {
                             this.queue.push("data: "+chunk_text+"\n\n");
                         }
+                        else {
+                            var chunk_data = null;
+                            try {
+                                chunk_data = JSON.parse(chunk_text);
+                                if( chunk_data.hasOwnProperty('conversation_id')) this.conversation_id = chunk_data.conversation_id;
+                                if( this.payload === null ) {
+                                    this.payload = {"conversation_id":this.conversation_id, "message":null};
+                                }
+                                if( (this.payload.message == null && chunk_data.hasOwnProperty('message'))
+                                   || (this.payload.message.create_date === null && chunk_data.message.create_date !== null) ) {
+                                    this.payload = JSON.parse(chunk_text); // parse again to make a copy
+                                    this.payload.message.content = {content_type: "text", "parts": [""]};
+                                }
+                            }
+                            catch(e) { }
+
+                            this.has_content = chunk_data !== null && chunk_data.hasOwnProperty('message') && chunk_data.message.hasOwnProperty('content');
+
+                            if( chunk_data !== null ) {
+                                if( chunk_data.hasOwnProperty('moderation_response') ) {
+                                    var has_flag = chunk_data.moderation_response.flagged === true;
+                                    var has_block = chunk_data.moderation_response.blocked === true;
+                                    if( has_flag || has_block ) {
+                                        if( has_flag ) {
+                                            if( this.mod_result !== ModerationResult.BLOCKED ) this.mod_result = ModerationResult.FLAGGED;
+                                        }
+                                        console.log("Received chunk contains flagging/blocking properties, clearing");
+                                        chunk_data.moderation_response.flagged = false;
+                                        chunk_data.moderation_response.blocked = false;
+                                    }
+
+                                    if( has_block ) {
+                                        console.log("Message has been BLOCKED. Waiting for ChatGPT to finalize the request...");
+                                        this.mod_result = ModerationResult.BLOCKED;
+                                        this.is_blocked = true;
+                                        if( this.payload !== null && this.payload.message !== null ) {
+                                            this.payload.message.author.role = "assistant";
+                                            this.payload.message.weight = 1;
+                                            this.payload.message.content.parts[0] = "DeMod: Moderation has intercepted the response and is actively blocking it. Waiting for ChatGPT to finalize the request so DeMod can fetch it from the conversation's history...";
+                                            chunk_data = this.payload;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        this.chunk_start = this.chunk.indexOf("data: ", chunk_end+1);
                     }
 
-                    this.chunk_start = this.chunk.indexOf("data: ", chunk_end+1);
+                    var cleaned = clearFlagging(this.chunk);
+                    this.queue.push(cleaned);
+                }
+                else {
+                    this.queue.push(this.chunk);
                 }
 
                 return true;
@@ -569,27 +556,11 @@ var demod_init = async function() {
                         is_blocked = false;
                         mod_result = ModerationResult.SAFE;
                         updateDeModMessageState(mod_result);
-                        startRedrawTests();
 
                         console.log("Processing basic prompted conversation. Scanning for moderation results...");
                         const stream = new ReadableStream({
                             async start(controller) {
                                 var reader = original_result.body.getReader();
-                                var timestamp = Date.now();
-                                var time_delay = 2000; // delay starts large as to not fill the controller too early
-
-                                var text_response;
-                                var buffer = [];
-                                function flushBuffer() {
-                                    for( const entry of buffer ) {
-                                        controller.enqueue(entry);
-                                    }
-                                    if( text_response !== null ) {
-                                        controller.enqueue(text_response);
-                                    }
-                                    text_response = null;
-                                    buffer.length = 0;
-                                }
 
                                 while (true) {
                                     const { done, value } = await reader.read();
@@ -608,26 +579,11 @@ var demod_init = async function() {
                                     payload = response.payload;
 
                                     for( const entry of response.queue ) {
-                                        buffer.push( encoder.encode(entry) );
-                                    }
-                                    if( response.last_text !== null ) {
-                                        text_response = "data: "+JSON.stringify(response.last_text)+"\n\n";
-                                        text_response = encoder.encode(text_response);
-                                    }
-
-                                    if( has_redraw ) {
-                                        has_redraw = false;
-                                        var current_time = Date.now();
-                                        if( (current_time-timestamp) > time_delay ) {
-                                            timestamp = current_time;
-                                            time_delay = 1000;
-                                            flushBuffer();
-                                        }
+                                        const encoded_chunk = encoder.encode(entry);
+                                        controller.enqueue(encoded_chunk);
                                     }
 
                                     if( response.is_done || done ) {
-                                        flushBuffer();
-                                        stopRedrawTests();
                                         controller.close();
                                         break;
                                     }
