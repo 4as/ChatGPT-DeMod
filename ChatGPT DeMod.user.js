@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      4.5
+// @version      4.6
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chatgpt.com/*
@@ -234,10 +234,11 @@ var demod_init = async function() {
         const DONE = "[DONE]";
         var init_cache = null;
         var original_fetch = target_window.fetch;
-        var is_blocked = false;
+        var response_blocked = false;
         var payload = null;
         var last_response = null;
         var mod_result = ModerationResult.UNKNOWN;
+        var sequence_shift = 0; //each sequence in the generated response has an id and all ids need to match, so DeMod shifts them to insert own messages if needed.
 
         var decoder = new TextDecoder();
         var encoder = new TextEncoder();
@@ -320,8 +321,8 @@ var demod_init = async function() {
                 this.chunk_start = this.chunk.indexOf("data: ");
                 this.handle_latest = download_latest;
             }
-            async process(is_blocked) {
-                this.is_blocked = is_blocked;
+            async process(current_blocked) {
+                this.is_blocked = current_blocked;
 
                 if( this.chunk_start == -1 ) {
                     this.queue.push(this.chunk);
@@ -347,7 +348,7 @@ var demod_init = async function() {
                                     this.queue.push("data: "+JSON.stringify(this.payload)+"\n\n");
                                 }
                             }
-                            this.queue.push("data: "+chunk_text+"\n\n");
+
                         }
                         else {
                             var chunk_data = null;
@@ -426,17 +427,15 @@ var demod_init = async function() {
             response_object;
             response_body;
             response = null;
-            payload = null;
+            sequence_id;
             constructor(current_payload, event) {
                 this.event = event;
-                this.payload = current_payload;
                 this.response_data = decodeData(event.data);
-                if( this.response_data != null ) {
-                    this.response_object = JSON.parse(this.response_data);
-                    if( this.has_body ) {
-                        this.response_body = atob(this.response_object.data.body);
-                        this.response = new ChatResponse(this.payload, this.response_body, false);
-                    }
+                this.response_object = JSON.parse(this.response_data);
+                this.sequence_id = this.response_object.sequenceId;
+                if( this.has_body ) {
+                    this.response_body = atob(this.response_object.data.body);
+                    this.response = new ChatResponse(current_payload, this.response_body, false);
                 }
             }
 
@@ -446,16 +445,20 @@ var demod_init = async function() {
             get is_blocked() { return this.response.is_blocked; }
             get is_done() { return this.response.is_done; }
             get mod_result() { return this.response.mod_result; }
+            get payload() {
+                if( this.is_valid ) return this.response.payload;
+                else return null;
+            }
 
-            async process(is_blocked) {
-                await this.response.process(is_blocked);
+            async process(current_blocked) {
+                await this.response.process(current_blocked);
 
                 var data = "";
                 for(const entry of this.response.queue) {
                     data += entry;
                 }
 
-                this.setBody(data);
+                this.response_body = data;
             }
 
             replace(latest) {
@@ -463,14 +466,20 @@ var demod_init = async function() {
                     this.response = new ChatResponse(this.payload, "", false);
                 }
                 var data = this.response.replace(latest);
-                this.setBody(data);
+                this.response_body = data;
             }
 
-            setBody(body) {
-                this.response_body = body;
+            getEvent() {
+                this.response_object.sequenceId = this.sequence_id;
                 this.response_object.data.body = btoa(this.response_body);
-                this.response_data = JSON.stringify(this.response_object);
-                this.event = cloneEvent(this.event, this.response_data);
+                var updated_data = JSON.stringify(this.response_object);
+                return cloneEvent(this.event, updated_data);
+            }
+
+            clone() {
+                var copy = new ChatEvent(this.payload, this.event);
+                copy.response_body = this.response_body;
+                return copy;
             }
         }
 
@@ -552,8 +561,9 @@ var demod_init = async function() {
                 switch(convo_type) {
                     case ConversationType.PROMPT: {
 
+                        sequence_shift = 0;
                         last_response = null;
-                        is_blocked = false;
+                        response_blocked = false;
                         mod_result = ModerationResult.SAFE;
                         updateDeModMessageState(mod_result);
 
@@ -569,13 +579,13 @@ var demod_init = async function() {
                                     var chunk = decoder.decode(raw_chunk);
                                     var response = new ChatResponse(payload, chunk, true);
 
-                                    await response.process(is_blocked);
+                                    await response.process(response_blocked);
 
                                     if( mod_result < response.mod_result ) {
                                         mod_result = response.mod_result;
                                         updateDeModMessageState(mod_result);
                                     }
-                                    is_blocked = response.is_blocked;
+                                    response_blocked = response.is_blocked;
                                     payload = response.payload;
 
                                     for( const entry of response.queue ) {
@@ -631,48 +641,40 @@ var demod_init = async function() {
                 async function processMessage(original_onmessage, event) {
                     var response = new ChatEvent(payload, event);
                     if( response.is_valid ) {
-                        await response.process(is_blocked);
+                        await response.process(response_blocked);
 
                         if( mod_result < response.mod_result ) {
                             mod_result = response.mod_result;
                             updateDeModMessageState(mod_result);
                         }
 
-                        var blocked = response.is_blocked;
+                        response_blocked = response.is_blocked;
                         payload = response.payload;
 
-                        if(blocked) {
+                        if( response.has_body ) {
+                            last_response = response.clone();
+                            last_response.sequence_id += sequence_shift;
+                        }
+
+                        if(response_blocked) {
                            if( response.is_done ) {
-                               console.log("Response finalized.");
                                if( last_response != null ) {
                                    var latest = await redownloadLatest();
                                    last_response.replace(latest);
                                    buffer.push(last_response);
+                                   sequence_shift ++;
                                }
-                               buffer.push(response);
-                            }
-                            else {
-                                if( blocked != is_blocked ) {
-                                    is_blocked = true;
-                                    last_response = response;
-                                }
-                                else if( response.has_body ) {
-                                    last_response = null;
-                                    buffer.push(response);
-                                }
-                                else {
-                                    buffer.push(response);
-                                }
                             }
                         }
-                        else {
-                            buffer.push(response);
-                        }
+
+                        response.sequence_id += sequence_shift;
+                        buffer.push(response);
 
                         var entry;
                         try {
                             for(entry of buffer) {
-                                original_onmessage(entry.event);
+                                var entry_event = entry.getEvent();
+                                original_onmessage( entry_event );
                             }
                             buffer.length = 0;
                         }
