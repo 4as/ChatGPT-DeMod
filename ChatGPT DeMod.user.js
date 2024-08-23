@@ -3,7 +3,7 @@
 // @namespace    pl.4as.chatgpt
 // @version      4.6
 // @description  Hides moderation results during conversations with ChatGPT
-// @author       4as
+// @author       w43322
 // @match        *://x.liaox.ai/*
 // @match        *://chatgpt.com/*
 // @match        *://chat.openai.com/*
@@ -728,7 +728,7 @@ var demod_init = async function() {
 var target_window = typeof(unsafeWindow)==='undefined' ? window : unsafeWindow;
 var current_url = window.location.href;
 if( current_url.match("/c/") || current_url.match("/share/") ) {
-    window.location.replace("https://chat.openai.com");
+    window.location.replace("https://x.liaox.ai");
 }
 else if( document.body == null ) {
     target_window.addEventListener("DOMContentLoaded", demod_init);
