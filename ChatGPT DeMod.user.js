@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      4.6.0
+// @version      4.7.1
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       w43322
 // @match        *://x.liaox.ai/*
@@ -15,6 +15,7 @@
 // ==/UserScript==
 
 'use strict';
+var target_window = typeof(unsafeWindow)==='undefined' ? window : unsafeWindow;
 
 var demod_init = async function() {
     'use strict';
@@ -217,7 +218,7 @@ var demod_init = async function() {
             PROMPT : 2,
         };
 
-        var target_window = typeof(unsafeWindow)==='undefined' ? window : unsafeWindow;
+        
 
         // DeMod state control
         function getDeModState() {
@@ -715,22 +716,11 @@ var demod_init = async function() {
         console.log("DeMod interceptor is ready.");
     }
 
-    // The script's core logic is being injected into the page to work around different JavaScript contexts
-    var script = document.createElement('script');
-    script.appendChild(document.createTextNode('('+ main +')();'));
-    (document.body || document.head || document.documentElement).appendChild(script);
-
     // Alternative method of adding DeMod to the chat in case the script injection fails
-    var target_window = typeof(unsafeWindow)==='undefined' ? window : unsafeWindow;
     target_window.addEventListener("load", main);
 };
 
-var target_window = typeof(unsafeWindow)==='undefined' ? window : unsafeWindow;
-var current_url = window.location.href;
-if( current_url.match("/c/") || current_url.match("/share/") ) {
-    window.location.replace("https://x.liaox.ai");
-}
-else if( document.body == null ) {
+if( document.body == null ) {
     target_window.addEventListener("DOMContentLoaded", demod_init);
 }
 else {
