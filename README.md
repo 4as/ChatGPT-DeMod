@@ -1,15 +1,15 @@
 
 
 
+
 # ChatGPT-DeMod
-This userscript for Tampermonkey and Greasemonkey allows you to hide results of the moderation checks during conversations with ChatGPT, i.e. your messages will no longer be removed or visibly marked, but the moderation still sees them.  
+This userscript for Tampermonkey and Greasemonkey allows you to hide results of the moderation checks during conversations with ChatGPT, i.e. the responses will no longer be removed or visibly marked, but the moderation still sees them.  
 ![Warning message removed](res/demod-warning3.png)  
 
-DeMod is intended for people that just don't care about being moderated, they just don't want to see their messages being removed.  
+DeMod is intended for people that just don't care about being moderated.
 In particular this means DeMod will:
 1. Stops the "share" function from working. Without DeMod opening the share dialog triggers a moderation check on the whole conversation.
-2. Redirects any attempts at accessing a conversation directly through the URL (including refreshing the page) back to the "new chat" page. Without DeMod opening a conversation through a link triggers a moderation check on the whole conversation.
-3. If your message gets blocked (red warning), DeMod will attempt to read it anyway once ChatGPT finishes generating a response. Blocked messages usally stop midsentence or do not get generated at all, but just wait for ChatGPT to finalize the response, and DeMod should load the remaining text.
+2. If a response gets blocked (red warning), DeMod will attempt to read it anyway once ChatGPT finishes generating it. Blocked messages usually stop mid-sentence or do not get generated at all, but just wait for ChatGPT to finalize the response, and DeMod should load the remaining text.
 
 # Installation
 First of all you will have to install [Tampermonkey](https://www.tampermonkey.net) plugin for your browser on PC (or Kiwi browser if you're on Android). Then you'll have to install the userscript, which can be done in one of the following ways:  
@@ -32,6 +32,5 @@ The panel consists of two elements:
 * Moderation indicator - will be in one of four stats: None, Safe, Flagged, Blocked. **None** = you are yet to send a message (grey). **Safe** = your last message went through the moderation without issues (green). **Flagged** = your last message was flagged (yellow). **Blocked** = your last message was blocked (red).
 
 # Knows issues
-Userscripts for Safari is no longer supported as it fails to inject DeMod into the ChatGPT's page.
+ChatGPT removes blocked (red warning) prompts permanently. DeMod currently cannot restore messages you wrote if they are removed.
 
-Bromite browser is not supported. Since the May 24th update OpenAI is now using a stricter Content Policy checks on injected scripts and Bromite doesn't offer a way to circumvent that.
