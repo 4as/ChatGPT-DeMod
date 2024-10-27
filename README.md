@@ -34,3 +34,4 @@ The panel consists of two elements:
 # Knows issues
 ChatGPT removes blocked (red warning) prompts permanently. DeMod currently cannot restore messages you wrote if they are removed.
 
+DeMod is primarily designed to work on desktop PCs, but some mobile browsers, like Kiwi Browser for Android, are known to work too, although proper support is not guaranteed.
