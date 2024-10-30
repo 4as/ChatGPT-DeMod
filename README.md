@@ -6,7 +6,7 @@
 This userscript for Tampermonkey and Greasemonkey allows you to hide results of the moderation checks during conversations with ChatGPT, i.e. the responses will no longer be removed or visibly marked, but the moderation still sees them.  
 ![Warning message removed](res/demod-warning3.png)  
 
-DeMod is intended for people that just don't care about being moderated.
+DeMod is intended for people that just don't care about being moderated, they want to see the responses.  
 In particular this means DeMod will:
 1. Stops the "share" function from working. Without DeMod opening the share dialog triggers a moderation check on the whole conversation.
 2. If a response gets blocked (red warning), DeMod will attempt to read it anyway once ChatGPT finishes generating it. Blocked messages usually stop mid-sentence or do not get generated at all, but just wait for ChatGPT to finalize the response, and DeMod should load the remaining text.
