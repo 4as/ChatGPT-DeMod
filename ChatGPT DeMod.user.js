@@ -476,7 +476,7 @@
 		var fetch_url = arg[0];
 		var is_request = false;
 		if (typeof(fetch_url) !== 'string') {
-			fetch_url = fetch_url.url;
+			fetch_url = fetch_url.href;
 			is_request = true;
 		}
 
