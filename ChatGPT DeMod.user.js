@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      5.0
+// @version      5.1
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chatgpt.com/*
@@ -15,7 +15,8 @@
 
 (function () {
 	'use strict';
-	var target_window = typeof(unsafeWindow) === 'undefined' ? window : unsafeWindow;
+	const target_window = typeof(unsafeWindow) === 'undefined' ? window : unsafeWindow;
+	const original_fetch = target_window.fetch;
 
 	const DEMOD_ID = 'demod-cont';
 	const DEMOD_KEY = 'DeModState';
@@ -160,7 +161,7 @@
 	const DONE = "[DONE]";
 	var init_cache = null;
 	var backup_cache = null;
-	var original_fetch = target_window.fetch;
+
 	var response_blocked = false;
 	var payload = null;
 	var last_response = null;
@@ -204,16 +205,40 @@
 		});
 	}
 
-	function rebuildConversationURL(url, conversation_id) {
-		var idx = url.indexOf("/conversations");
+	function redirectConversations(url, conversation_id) {
+		var idx = url.indexOf("/textdocs");
+		if (idx !== -1)
+			return url.substring(0, idx);
+
+		idx = url.indexOf("/conversations");
 		if (idx === -1)
 			return url;
 		return url.substring(0, idx) + "/conversation/" + conversation_id;
 	}
 
-	async function redownloadLatest() {
-		console.log("[DEMOD] Attempting to reload the latest response from history.");
+	function parseLatest(redownload_text) {
+		var latest = null;
+		var redownload_object = null;
+		try {
+			redownload_object = JSON.parse(redownload_text);
+		} catch (e) {
+			console.log("[DEMOD] Failed to parse re-downloaded response.");
+		}
+		if (redownload_object !== null && redownload_object.hasOwnProperty('mapping')) {
+			var latest_time = 0;
+			for (var map_key in redownload_object.mapping) {
+				var map_obj = redownload_object.mapping[map_key];
+				if (map_obj.hasOwnProperty('message') && map_obj.message != null
+					 && map_obj.message.hasOwnProperty('create_time') && map_obj.message.create_time > latest_time) {
+					latest = map_obj.message;
+				}
+			}
+		}
 
+		return latest;
+	}
+
+	async function redownloadLatest() {
 		var original_request = init_cache;
 		if (original_request === null) {
 			if (last_conv_id === null)
@@ -223,10 +248,10 @@
 
 		var fetch_url = null;
 		if (typeof(original_request[0]) !== 'string') {
-			fetch_url = rebuildConversationURL(original_request[0].url, last_conv_id);
+			fetch_url = redirectConversations(original_request[0].href, last_conv_id);
 			original_request[0] = cloneRequest(original_request[0], fetch_url, "GET", "");
 		} else {
-			fetch_url = rebuildConversationURL(original_request[0], last_conv_id);
+			fetch_url = redirectConversations(original_request[0], last_conv_id);
 			original_request[0] = fetch_url;
 			original_request[1].method = "GET";
 			delete original_request[1].body;
@@ -237,26 +262,115 @@
 		var redownload_result = await init_redownload;
 		if (redownload_result.ok) {
 			var redownload_text = await redownload_result.text();
-			var redownload_object = null;
-			try {
-				redownload_object = JSON.parse(redownload_text);
-			} catch (e) {
-				console.log("[DEMOD] Failed to parse re-downloaded response.");
+			latest = parseLatest(redownload_text);
+		}
+
+		if (latest === null) {
+			await new Promise(r => setTimeout(r, 3000));
+
+			init_redownload = original_fetch(...original_request);
+			redownload_result = await init_redownload;
+			if (redownload_result.ok) {
+				redownload_text = await redownload_result.text();
+				latest = parseLatest(redownload_text);
 			}
-			if (redownload_object !== null && redownload_object.hasOwnProperty('mapping')) {
-				var latest_time = 0;
-				for (var map_key in redownload_object.mapping) {
-					var map_obj = redownload_object.mapping[map_key];
-					if (map_obj.hasOwnProperty('message') && map_obj.message != null
-						 && map_obj.message.hasOwnProperty('create_time') && map_obj.message.create_time > latest_time) {
-						latest = map_obj.message;
-						latest_time = latest.create_time;
+		}
+
+		if (latest !== null)
+			console.log("[DEMOD] Latest response redownloaded successfully.");
+
+		return latest;
+	}
+
+	class ChatPayload {
+		data;
+		message;
+
+		constructor() {
+			this.data = {
+				"p": "",
+				"o": "patch",
+				"v": [{
+						"p": "/message/content/parts/0",
+						"o": "append",
+						"v": ""
+					}, {
+						"p": "/message/status",
+						"o": "replace",
+						"v": "finished_successfully"
+					}, {
+						"p": "/message/end_turn",
+						"o": "replace",
+						"v": true
+					}, {
+						"p": "/message/metadata",
+						"o": "append",
+						"v": {
+							"is_complete": true,
+							"finish_details": {
+								"type": "stop",
+								"stop_tokens": [200002]
+							}
+						}
 					}
+				]
+			}
+		}
+
+		getData() {
+			return "event: delta\ndata: " + JSON.stringify(this.data) + "\n\n";
+		}
+
+		update(chunk_data) {
+			if (ChatPayload.isPatch(chunk_data)) {
+				this.data = chunk_data;
+				if (this.message !== null)
+					this.setMessage(this.message);
+			}
+		}
+
+		setText(text) {
+			var v = this.data.v;
+			for (let i = 0; i < v.length; ++i) {
+				var entry = v[i];
+				if (entry.hasOwnProperty("p") && entry.p.indexOf("parts") !== -1) {
+					entry.o = "replace";
+					entry.v = text;
 				}
 			}
 		}
 
-		return latest;
+		setMessage(message) {
+			var v = this.data.v;
+			for (let i = v.length - 1; i > -1; --i) {
+				var value = v[i];
+				if (value.hasOwnProperty("p") && value.p.indexOf("parts") !== -1) {
+					v.splice(i, 1);
+				}
+			}
+
+			var parts = message.content.parts;
+			for (let i = parts.length - 1; i > -1; --i) {
+				var part = parts[i];
+				v.push({
+					"p": "/message/content/parts/" + i,
+					"o": "replace",
+					"v": part
+				});
+			}
+		}
+
+		static isPatch(chunk_data) {
+			return chunk_data.hasOwnProperty("o") && chunk_data.o === "patch" && chunk_data.hasOwnProperty("v");
+		}
+
+		static getConversationId(chunk_data) {
+			if (chunk_data.hasOwnProperty('conversation_id'))
+				return chunk_data.conversation_id;
+			if (chunk_data.hasOwnProperty('v') && chunk_data.v.hasOwnProperty('conversation_id'))
+				return chunk_data.v.conversation_id;
+			return null;
+		}
 	}
 
 	class ChatResponse {
@@ -266,7 +380,6 @@
 		conversation_id;
 		is_done = false;
 		is_blocked = false;
-		has_content = false;
 		handle_latest = false;
 		mod_result = ModerationResult.SAFE;
 		queue = [];
@@ -284,7 +397,7 @@
 				return;
 			}
 
-			if (hasFlagged(this.chunk) || this.payload === null || this.payload.v.message === null || (this.is_blocked && this.chunk.indexOf(DONE) !== -1)) {
+			if (hasFlagged(this.chunk) || ChatPayload.isPatch(this.chunk) || (this.is_blocked && this.chunk.indexOf(DONE) !== -1)) {
 				while (this.chunk_start != -1 && !this.is_done) {
 					var chunk_end = this.chunk.indexOf("\n", this.chunk_start);
 					if (chunk_end == -1)
@@ -294,13 +407,14 @@
 					if (chunk_text === DONE) {
 						this.is_done = true;
 						if (this.handle_latest && this.is_blocked) {
+							console.log("[DEMOD] Blocked response finished, attempting to reload it from history.");
 							var latest = await redownloadLatest();
 							if (latest !== null) {
-								this.payload.v.message = latest;
-								this.queue.push("event: delta\ndata: " + JSON.stringify(this.payload) + "\n\n");
+								this.payload.setMessage(latest);
+								this.queue.push(this.payload.getData());
 							} else {
-								this.payload.v.message.content.parts[0] = "DeMod: Request completed, but DeMod failed to access the history. Try refreshing the conversation instead.";
-								this.queue.push("event: delta\ndata: " + JSON.stringify(this.payload) + "\n\n");
+								this.payload.setText("DeMod: Request completed, but DeMod failed to access the history. Try refreshing the conversation instead.");
+								this.queue.push(this.payload.getData());
 							}
 						}
 
@@ -308,32 +422,12 @@
 						var chunk_data = null;
 						try {
 							chunk_data = JSON.parse(chunk_text);
-							if (chunk_data.hasOwnProperty('v')) {
-								if (chunk_data.v.hasOwnProperty('conversation_id')) {
-									this.conversation_id = chunk_data.v.conversation_id;
-									last_conv_id = this.conversation_id;
-								}
-								if (this.payload === null) {
-									this.payload = {
-										"v": {
-											"conversation_id": this.conversation_id,
-											"message": null
-										},
-										"c": 1
-									};
-								}
-								if ((this.payload.v.message == null && chunk_data.v.hasOwnProperty('message'))
-									 || (this.payload.v.message.create_date === null && chunk_data.v.message.create_date !== null)) {
-									this.payload.v = JSON.parse(chunk_text).v; // parse again to make a copy
-									this.payload.v.message.content = {
-										content_type: "text",
-										"parts": [""]
-									};
-								}
+							var conv_id = ChatPayload.getConversationId(chunk_data);
+							if (conv_id !== null) {
+								this.conversation_id = conv_id;
+								last_conv_id = conv_id;
 							}
 						} catch (e) {}
-
-						this.has_content = chunk_data !== null && chunk_data.hasOwnProperty('v') && chunk_data.v.hasOwnProperty('message') && chunk_data.v.message.hasOwnProperty('content');
 
 						if (chunk_data !== null) {
 							if (chunk_data.hasOwnProperty('moderation_response')) {
@@ -353,12 +447,8 @@
 									console.log("[DEMOD] Message has been BLOCKED. Waiting for ChatGPT to finalize the request...");
 									this.mod_result = ModerationResult.BLOCKED;
 									this.is_blocked = true;
-									if (this.payload !== null && this.payload.v.message !== null) {
-										this.payload.v.message.author.role = "assistant";
-										this.payload.v.message.weight = 1;
-										this.payload.v.message.content.parts[0] = "DeMod: Moderation has intercepted the response and is actively blocking it. Waiting for ChatGPT to finalize the request so DeMod can fetch it from the conversation's history...";
-										chunk_data = this.payload;
-									}
+									this.payload.setText("DeMod: Moderation has intercepted the response and is actively blocking it. Waiting for ChatGPT to finalize the request so DeMod can fetch it from the conversation's history...");
+									//this.queue.push(this.payload.getData());
 								}
 							}
 						}
@@ -374,16 +464,6 @@
 			}
 
 			return true;
-		}
-
-		replace(latest) {
-			if (latest !== null) {
-				this.payload.v.message = latest;
-				return "event: delta\ndata: " + JSON.stringify(this.payload) + "\n\n";
-			} else {
-				this.payload.v.message.content.parts[0] = "DeMod: Request completed, but DeMod failed to access the history. Try refreshing the conversation instead.";
-				return "event: delta\ndata: " + JSON.stringify(this.payload) + "\n\n"
-			}
 		}
 	}
 
@@ -414,9 +494,6 @@
 		get has_body() {
 			return this.response_object != null && this.response_object.type == "message" && this.response_object.dataType == "json" && this.response_object.data.body != null;
 		}
-		get has_content() {
-			return this.is_valid && this.has_body && this.response.has_content;
-		}
 		get is_blocked() {
 			return this.response.is_blocked;
 		}
@@ -444,14 +521,6 @@
 			this.response_body = data;
 		}
 
-		replace(latest) {
-			if (this.response == null) {
-				this.response = new ChatResponse(this.payload, "", false);
-			}
-			var data = this.response.replace(latest);
-			this.response_body = data;
-		}
-
 		getEvent() {
 			this.response_object.sequenceId = this.sequence_id;
 			this.response_object.data.body = btoa(this.response_body);
@@ -467,13 +536,13 @@
 	}
 
 	// Intercepter for old fetch() based communication
-	target_window.fetch = async function (...arg) {
+	const intercepter_fetch = async function (target, this_arg, args) {
 		if (!is_on) {
-			return original_fetch(...arg);
+			return target.apply(this_arg, args);
 		}
 
-		var original_arg = arg;
-		var fetch_url = arg[0];
+		var original_arg = args;
+		var fetch_url = args[0];
 		var is_request = false;
 		if (typeof(fetch_url) !== 'string') {
 			fetch_url = fetch_url.href;
@@ -481,6 +550,7 @@
 		}
 
 		if (fetch_url.indexOf('/share/create') != -1) {
+			console.log("[DEMOD] Share request detected, blocking.");
 			return new Response("", {
 				status: 404,
 				statusText: "Not found"
@@ -493,25 +563,27 @@
 			if (fetch_url.indexOf("/gen_title") != -1) {
 				var init_url = fetch_url.replace("/gen_title", "");
 				if (is_request) {
-					arg = cloneRequest(arg[0], init_url, "GET", null);
-					arg.headers.delete("Content-Type");
+					console.log("[DEMOD] Generating title (Request).");
+					args = cloneRequest(args[0], init_url, "GET", null);
+					args.headers.delete("Content-Type");
 				} else {
-					arg = JSON.parse(JSON.stringify(arg));
-					arg[0] = init_url;
-					arg[1].method = "GET";
-					delete arg[1].headers["Content-Type"];
-					delete arg[1].body;
+					console.log("[DEMOD] Generating title (basic).");
+					args = JSON.parse(JSON.stringify(args));
+					args[0] = init_url;
+					args[1].method = "GET";
+					delete args[1].headers["Content-Type"];
+					delete args[1].body;
 				}
 			}
 
 			var conv_request = null;
 			if (is_request) {
-				if (arg[0] !== undefined && arg[0].hasOwnProperty('text') && (typeof arg[0].text === 'function')) {
-					conv_request = await arg[0].text();
+				if (args[0] !== undefined && args[0].hasOwnProperty('text') && (typeof args[0].text === 'function')) {
+					conv_request = await args[0].text();
 				}
 			} else {
-				if (arg[1] !== undefined && arg[1].hasOwnProperty('body')) {
-					conv_request = arg[1].body;
+				if (args[1] !== undefined && args[1].hasOwnProperty('body')) {
+					conv_request = args[1].body;
 				}
 			}
 
@@ -520,19 +592,20 @@
 				var conv_body = JSON.parse(conv_request);
 
 				if (is_request) {
-					arg[0] = cloneRequest(arg[0], fetch_url, arg[0].method, conv_body);
+					args[0] = cloneRequest(args[0], fetch_url, args[0].method, conv_body);
 				} else {
-					arg[1].body = JSON.stringify(conv_body);
+					args[1].body = JSON.stringify(conv_body);
 				}
 			} else {
 				convo_type = ConversationType.INIT;
-				init_cache = arg;
+				init_cache = args;
 			}
 		} else if (fetch_url.indexOf('/conversations') !== -1) {
-			backup_cache = JSON.parse(JSON.stringify(arg));
+			backup_cache = JSON.parse(JSON.stringify(args));
 		}
 
-		var original_promise = original_fetch(...original_arg);
+		var original_promise = target.apply(this_arg, original_arg);
+
 		if (is_conversation) {
 			var original_result = await original_promise;
 
@@ -543,6 +616,7 @@
 			switch (convo_type) {
 			case ConversationType.PROMPT: {
 
+					payload = new ChatPayload();
 					sequence_shift = 0;
 					last_response = null;
 					response_blocked = false;
@@ -553,6 +627,7 @@
 					const stream = new ReadableStream({
 						async start(controller) {
 							var reader = original_result.body.getReader();
+
 							while (true) {
 								const {
 									done,
@@ -613,6 +688,11 @@
 		return original_promise;
 	}
 
+	const intercepter = new Proxy(original_fetch, {
+		apply: intercepter_fetch
+	});
+	target_window.fetch = intercepter;
+
 	// Interceptor for new WebSocket communication (credit to WebSocket Logger for making this possible)
 	var original_websocket = target_window.WebSocket;
 	target_window.WebSocket = new Proxy(original_websocket, {
@@ -623,6 +703,9 @@
 			var buffer = [];
 
 			async function processMessage(original_onmessage, event) {
+				if (!is_on)
+					original_onmessage(event);
+
 				var response = new ChatEvent(payload, event);
 				if (response.is_valid) {
 					await response.process(response_blocked);
@@ -643,6 +726,7 @@
 					if (response_blocked) {
 						if (response.is_done) {
 							if (last_response != null) {
+								console.log("[DEMOD] Response blocked, redownloading from history.");
 								var latest = await redownloadLatest();
 								last_response.replace(latest);
 								buffer.push(last_response);
@@ -675,7 +759,7 @@
 						var original_onmessage = v;
 						v = (e) => processMessage(original_onmessage, e);
 					}
-					return target[prop] = v;
+					return (target[prop] = v);
 				}
 			};
 
@@ -762,7 +846,7 @@
 		document.body.appendChild(demod_div);
 		is_on = getDeModState();
 		updateDeModState();
-		console.log("[DEMOD] DeMod interceptor is ready.");
+		console.log("[DEMOD] DeMod UI attached.");
 	};
 
 	if (document.readyState === 'loading') {
