@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      5.1
+// @version      5.2
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chatgpt.com/*
@@ -157,6 +157,7 @@
 		target_window.localStorage.setItem(DEMOD_KEY, demod_on);
 	}
 
+	const FORCE_REDOWNLOAD = true; //for debugging, set to 'true' to always redownload the response.
 	// Interceptors shared data
 	const DONE = "[DONE]";
 	var init_cache = null;
@@ -266,6 +267,7 @@
 		}
 
 		if (latest === null) {
+			console.log("[DEMOD] Failed to read the latest response. Trying in few seconds...");
 			await new Promise(r => setTimeout(r, 3000));
 
 			init_redownload = original_fetch(...original_request);
@@ -358,6 +360,24 @@
 					"v": part
 				});
 			}
+
+			v.push({
+				"p": "/message/status",
+				"o": "replace",
+				"v": "finished_successfully"
+			});
+
+			v.push({
+				"p": "/message/metadata",
+				"o": "append",
+				"v": {
+					"is_complete": true,
+					"finish_details": {
+						"type": "stop",
+						"stop_tokens": [200002]
+					}
+				}
+			});
 		}
 
 		static isPatch(chunk_data) {
@@ -383,12 +403,14 @@
 		handle_latest = false;
 		mod_result = ModerationResult.SAFE;
 		queue = [];
+
 		constructor(existing_payload, decoded_chunk, download_latest) {
 			this.payload = existing_payload;
 			this.chunk = decoded_chunk;
 			this.chunk_start = this.chunk.indexOf("data: ");
 			this.handle_latest = download_latest;
 		}
+
 		async process(current_blocked) {
 			this.is_blocked = current_blocked;
 
@@ -397,7 +419,7 @@
 				return;
 			}
 
-			if (hasFlagged(this.chunk) || ChatPayload.isPatch(this.chunk) || (this.is_blocked && this.chunk.indexOf(DONE) !== -1)) {
+			if (hasFlagged(this.chunk) || ChatPayload.isPatch(this.chunk) || (this.is_blocked && this.chunk.indexOf(DONE) !== -1) || FORCE_REDOWNLOAD) {
 				while (this.chunk_start != -1 && !this.is_done) {
 					var chunk_end = this.chunk.indexOf("\n", this.chunk_start);
 					if (chunk_end == -1)
@@ -406,7 +428,7 @@
 
 					if (chunk_text === DONE) {
 						this.is_done = true;
-						if (this.handle_latest && this.is_blocked) {
+						if (this.handle_latest && (this.is_blocked || FORCE_REDOWNLOAD)) {
 							console.log("[DEMOD] Blocked response finished, attempting to reload it from history.");
 							var latest = await redownloadLatest();
 							if (latest !== null) {
@@ -596,7 +618,7 @@
 				} else {
 					args[1].body = JSON.stringify(conv_body);
 				}
-			} else {
+			} else if(fetch_url.indexOf('/conversation/') !== -1) {
 				convo_type = ConversationType.INIT;
 				init_cache = args;
 			}
