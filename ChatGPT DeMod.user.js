@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      5.2
+// @version      5.3
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chatgpt.com/*
