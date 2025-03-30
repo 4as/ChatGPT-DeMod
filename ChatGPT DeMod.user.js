@@ -157,7 +157,6 @@
 		target_window.localStorage.setItem(DEMOD_KEY, demod_on);
 	}
 
-	const FORCE_REDOWNLOAD = true; //for debugging, set to 'true' to always redownload the response.
 	// Interceptors shared data
 	const DONE = "[DONE]";
 	var init_cache = null;
@@ -419,7 +418,7 @@
 				return;
 			}
 
-			if (hasFlagged(this.chunk) || ChatPayload.isPatch(this.chunk) || (this.is_blocked && this.chunk.indexOf(DONE) !== -1) || FORCE_REDOWNLOAD) {
+			if (hasFlagged(this.chunk) || ChatPayload.isPatch(this.chunk) || (this.is_blocked && this.chunk.indexOf(DONE) !== -1)) {
 				while (this.chunk_start != -1 && !this.is_done) {
 					var chunk_end = this.chunk.indexOf("\n", this.chunk_start);
 					if (chunk_end == -1)
@@ -428,7 +427,7 @@
 
 					if (chunk_text === DONE) {
 						this.is_done = true;
-						if (this.handle_latest && (this.is_blocked || FORCE_REDOWNLOAD)) {
+						if (this.handle_latest && this.is_blocked) {
 							console.log("[DEMOD] Blocked response finished, attempting to reload it from history.");
 							var latest = await redownloadLatest();
 							if (latest !== null) {
