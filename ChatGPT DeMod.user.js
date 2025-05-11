@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      5.3
+// @version      5.4
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chatgpt.com/*
@@ -33,7 +33,8 @@
 	function updateDeModState() {
 		if (is_on) {
 			updateButton(demod_button, ButtonState.ON, "DeMod:");
-		} else {
+		}
+		else {
 			updateButton(demod_button, ButtonState.OFF, "DeMod:");
 		}
 	}
@@ -101,7 +102,8 @@
 				button.textContent = label + " On";
 				break;
 			}
-		} else {
+		}
+		else {
 			button.textContent = "";
 			button.style.height = '6px';
 			button.style.padding = '0px';
@@ -162,6 +164,7 @@
 	var init_cache = null;
 	var backup_cache = null;
 
+	var temp_chat = false; //is temporary chat in use?
 	var response_blocked = false;
 	var payload = null;
 	var last_response = null;
@@ -174,7 +177,8 @@
 	function decodeData(data) {
 		if (typeof data == 'string') {
 			return data;
-		} else if (data.byteLength != undefined) {
+		}
+		else if (data.byteLength != undefined) {
 			return decoder.decode(new Uint8Array(data));
 		}
 		return null;
@@ -250,7 +254,8 @@
 		if (typeof(original_request[0]) !== 'string') {
 			fetch_url = redirectConversations(original_request[0].href, last_conv_id);
 			original_request[0] = cloneRequest(original_request[0], fetch_url, "GET", "");
-		} else {
+		}
+		else {
 			fetch_url = redirectConversations(original_request[0], last_conv_id);
 			original_request[0] = fetch_url;
 			original_request[1].method = "GET";
@@ -427,19 +432,21 @@
 
 					if (chunk_text === DONE) {
 						this.is_done = true;
-						if (this.handle_latest && this.is_blocked) {
+						if (!temp_chat && this.handle_latest && this.is_blocked) {
 							console.log("[DEMOD] Blocked response finished, attempting to reload it from history.");
 							var latest = await redownloadLatest();
 							if (latest !== null) {
 								this.payload.setMessage(latest);
 								this.queue.push(this.payload.getData());
-							} else {
+							}
+							else {
 								this.payload.setText("DeMod: Request completed, but DeMod failed to access the history. Try refreshing the conversation instead.");
 								this.queue.push(this.payload.getData());
 							}
 						}
 
-					} else {
+					}
+					else {
 						var chunk_data = null;
 						try {
 							chunk_data = JSON.parse(chunk_text);
@@ -480,7 +487,8 @@
 
 				var cleaned = clearFlagging(this.chunk);
 				this.queue.push(cleaned);
-			} else {
+			}
+			else {
 				this.queue.push(this.chunk);
 			}
 
@@ -587,7 +595,8 @@
 					console.log("[DEMOD] Generating title (Request).");
 					args = cloneRequest(args[0], init_url, "GET", null);
 					args.headers.delete("Content-Type");
-				} else {
+				}
+				else {
 					console.log("[DEMOD] Generating title (basic).");
 					args = JSON.parse(JSON.stringify(args));
 					args[0] = init_url;
@@ -602,7 +611,8 @@
 				if (args[0] !== undefined && args[0].hasOwnProperty('text') && (typeof args[0].text === 'function')) {
 					conv_request = await args[0].text();
 				}
-			} else {
+			}
+			else {
 				if (args[1] !== undefined && args[1].hasOwnProperty('body')) {
 					conv_request = args[1].body;
 				}
@@ -614,14 +624,19 @@
 
 				if (is_request) {
 					args[0] = cloneRequest(args[0], fetch_url, args[0].method, conv_body);
-				} else {
+				}
+				else {
 					args[1].body = JSON.stringify(conv_body);
 				}
-			} else if(fetch_url.indexOf('/conversation/') !== -1) {
+				
+				temp_chat = conv_body.hasOwnProperty("history_and_training_disabled") && conv_body.history_and_training_disabled;
+			}
+			else if(fetch_url.indexOf('/conversation/') !== -1) {
 				convo_type = ConversationType.INIT;
 				init_cache = args;
 			}
-		} else if (fetch_url.indexOf('/conversations') !== -1) {
+		}
+		else if (fetch_url.indexOf('/conversations') !== -1) {
 			backup_cache = JSON.parse(JSON.stringify(args));
 		}
 
@@ -644,7 +659,7 @@
 					mod_result = ModerationResult.SAFE;
 					updateDeModMessageState(mod_result);
 
-					console.log("[DEMOD] Processing basic prompted conversation. Scanning for moderation results...");
+					console.log("[DEMOD] Processing basic prompted conversation (is temporary: "+temp_chat+"). Scanning for moderation results...");
 					const stream = new ReadableStream({
 						async start(controller) {
 							var reader = original_result.body.getReader();
@@ -769,7 +784,8 @@
 					} catch (e) {
 						console.log("[DEMOD] Failed to send parsed response: " + entry.response_data + "\n\nWith body: " + entry.response_body);
 					}
-				} else {
+				}
+				else {
 					original_onmessage(event);
 				}
 			};
@@ -867,12 +883,13 @@
 		document.body.appendChild(demod_div);
 		is_on = getDeModState();
 		updateDeModState();
-		console.log("[DEMOD] DeMod UI attached.");
+		console.log("[DEMOD] DeMod "+GM_info.script.version+" UI attached.");
 	};
 
 	if (document.readyState === 'loading') {
 		target_window.addEventListener("DOMContentLoaded", demod_init);
-	} else {
+	}
+	else {
 		demod_init();
 	}
 
