@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT DeMod
 // @namespace    pl.4as.chatgpt
-// @version      5.4
+// @version      5.5
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chatgpt.com/*
@@ -185,10 +185,9 @@
 	}
 
 	function cloneRequest(request, fetch_url, method, body) {
-		return new Request(fetch_url, {
+		var options = {
 			method: method,
 			headers: request.headers,
-			body: JSON.stringify(body),
 			referrer: request.referrer,
 			referrerPolicy: request.referrerPolicy,
 			mode: request.mode,
@@ -196,7 +195,11 @@
 			cache: request.cache,
 			redirect: request.redirect,
 			integrity: request.integrity,
-		});
+		};
+		if( body !== null && method !== "GET" && method !== "HEAD" ) {
+			options.body = JSON.stringify(body);
+		}
+		return new Request(fetch_url, options);
 	}
 
 	function cloneEvent(event, new_data) {
@@ -252,8 +255,10 @@
 
 		var fetch_url = null;
 		if (typeof(original_request[0]) !== 'string') {
-			fetch_url = redirectConversations(original_request[0].href, last_conv_id);
-			original_request[0] = cloneRequest(original_request[0], fetch_url, "GET", "");
+			if( original_request[0].url !== null ) fetch_url = redirectConversations(original_request[0].url, last_conv_id);
+			else if( original_request[0].href !== null ) fetch_url = redirectConversations(original_request[0].href, last_conv_id);
+			else return null;
+			original_request[0] = cloneRequest(original_request[0], fetch_url, "GET", null);
 		}
 		else {
 			fetch_url = redirectConversations(original_request[0], last_conv_id);
@@ -574,7 +579,9 @@
 		var fetch_url = args[0];
 		var is_request = false;
 		if (typeof(fetch_url) !== 'string') {
-			fetch_url = fetch_url.href;
+			if( fetch_url.url !== null ) fetch_url = fetch_url.url;
+			else if( fetch_url.href !== null ) fetch_url = fetch_url.href;
+			else return target.apply(this_arg, args);
 			is_request = true;
 		}
 
