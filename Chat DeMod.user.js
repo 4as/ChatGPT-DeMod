@@ -1,14 +1,14 @@
 // ==UserScript==
-// @name         ChatGPT DeMod
-// @namespace    pl.4as.chatgpt
-// @version      5.5
-// @description  Hides moderation results during conversations with ChatGPT
+// @name         Chat DeMod
+// @namespace    pl.4as.chat
+// @version      6.0
+// @description  Hides moderation results during conversations with Chat
 // @author       4as
-// @match        *://chatgpt.com/*
-// @match        *://chat.openai.com/*
+// @match        *://chatg*t.com/*
+// @match        *://chat.op*ai.com/*
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
-// @downloadURL  https://raw.githubusercontent.com/4as/ChatGPT-DeMod/main/ChatGPT%20DeMod.user.js
-// @updateURL    https://raw.githubusercontent.com/4as/ChatGPT-DeMod/main/ChatGPT%20DeMod.user.js
+// @downloadURL  https://raw.githubusercontent.com/4as/Chat-DeMod/main/Chat%20DeMod.user.js
+// @updateURL    https://raw.githubusercontent.com/4as/Chat-DeMod/main/Chat%20DeMod.user.js
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==
@@ -477,10 +477,10 @@
 								}
 
 								if (has_block) {
-									console.log("[DEMOD] Message has been BLOCKED. Waiting for ChatGPT to finalize the request...");
+									console.log("[DEMOD] Message has been BLOCKED. Waiting for Chat to finalize the request...");
 									this.mod_result = ModerationResult.BLOCKED;
 									this.is_blocked = true;
-									this.payload.setText("DeMod: Moderation has intercepted the response and is actively blocking it. Waiting for ChatGPT to finalize the request so DeMod can fetch it from the conversation's history...");
+									this.payload.setText("DeMod: Moderation has intercepted the response and is actively blocking it. Waiting for Chat to finalize the request so DeMod can fetch it from the conversation's history...");
 									//this.queue.push(this.payload.getData());
 								}
 							}
