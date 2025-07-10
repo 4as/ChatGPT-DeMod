@@ -4,8 +4,8 @@
 // @version      6.0
 // @description  Hides moderation results during conversations with Chat
 // @author       4as
-// @match        *://chatg*t.com/*
-// @match        *://chat.op*ai.com/*
+// @include      /^https?:\/\/chatg.*t\.com.*/
+// @include      /^https?:\/\/chat\.op.*ai\.com.*/
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
 // @downloadURL  https://raw.githubusercontent.com/4as/Chat-DeMod/main/Chat%20DeMod.user.js
 // @updateURL    https://raw.githubusercontent.com/4as/Chat-DeMod/main/Chat%20DeMod.user.js
