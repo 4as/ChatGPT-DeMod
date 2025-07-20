@@ -19,6 +19,8 @@ First of all you will have to install [Tampermonkey](https://www.tampermonkey.ne
 
 Make sure the script is enabled by navigating the **Installed Userscripts** tab.
 
+⚠ **On Chrome-based browsers you will have to enable the "developer mode" within the general extensions settings page before you'll be able to use any Tampermonkey script.**
+
 # Usage
 Once activated the script adds a small UI panel to the Chat's conversation page.
 The panel starts partly hidden and only a small stripe of pixels will be visible at the top of the page.  
